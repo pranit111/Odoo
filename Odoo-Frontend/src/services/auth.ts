@@ -17,6 +17,7 @@ interface RegisterData {
   email: string;
   password: string;
   password_confirm: string;
+  role: string;
 }
 
 export class AuthService {

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { Navigate, useNavigate } from 'react-router-dom';
+import { AuthService } from '../services/auth';
 
 export const Signup: React.FC = () => {
   const { isAuthenticated } = useAuth();
@@ -8,12 +9,14 @@ export const Signup: React.FC = () => {
     loginId: '',
     email: '',
     password: '',
-    confirmPassword: ''
+    confirmPassword: '',
+    role: 'OPERATOR' as 'ADMIN' | 'MANAGER' | 'OPERATOR'
   });
   const [errors, setErrors] = useState<{[key: string]: string}>({});
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState('');
   const navigate = useNavigate();
+  const authService = new AuthService();
 
   if (isAuthenticated) {
     return <Navigate to="/" replace />;
@@ -76,19 +79,48 @@ export const Signup: React.FC = () => {
     }
 
     setLoading(true);
+    setErrors({});
     
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const registerData = {
+        username: formData.loginId,
+        email: formData.email,
+        password: formData.password,
+        password_confirm: formData.confirmPassword,
+        role: formData.role
+      };
+
+      console.log('Attempting to register with:', registerData);
       
-      setSuccess('Account created successfully! Redirecting to login...');
+      const result = await authService.register(registerData);
       
-      // Redirect to login after 2 seconds
-      setTimeout(() => {
-        navigate('/login');
-      }, 2000);
+      console.log('Registration successful:', result);
+      setSuccess('Account created successfully! Sending verification code...');
+      
+      // Automatically send OTP after successful registration
+      try {
+        await authService.sendOTP(formData.loginId);
+        console.log('OTP sent successfully');
+        
+        // Redirect to OTP verification page with username
+        setTimeout(() => {
+          navigate('/verify-otp', { state: { username: formData.loginId } });
+        }, 2000);
+      } catch (otpError) {
+        console.error('Failed to send OTP:', otpError);
+        // If OTP sending fails, still redirect to verification page
+        // User can manually request resend
+        setTimeout(() => {
+          navigate('/verify-otp', { state: { username: formData.loginId } });
+        }, 2000);
+      }
     } catch (error) {
-      setErrors({ general: 'An error occurred. Please try again.' });
+      console.error('Registration error:', error);
+      if (error instanceof Error) {
+        setErrors({ general: error.message });
+      } else {
+        setErrors({ general: 'An error occurred during registration. Please try again.' });
+      }
     } finally {
       setLoading(false);
     }
@@ -155,6 +187,29 @@ export const Signup: React.FC = () => {
               />
               {errors.email && (
                 <p className="mt-1 text-sm text-red-600">{errors.email}</p>
+              )}
+            </div>
+
+            {/* Role Field */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Role
+              </label>
+              <select
+                name="role"
+                value={formData.role}
+                onChange={(e) => setFormData(prev => ({ ...prev, role: e.target.value as 'ADMIN' | 'MANAGER' | 'OPERATOR' }))}
+                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent ${
+                  errors.role ? 'border-red-300' : 'border-gray-300'
+                }`}
+                required
+              >
+                <option value="OPERATOR">Operator</option>
+                <option value="MANAGER">Manager</option>
+                <option value="ADMIN">Admin</option>
+              </select>
+              {errors.role && (
+                <p className="mt-1 text-sm text-red-600">{errors.role}</p>
               )}
             </div>
 

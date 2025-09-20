@@ -14,6 +14,13 @@ export const Dashboard: React.FC = () => {
   const { data: orders = [], loading: ordersLoading, error: ordersError } = useManufacturingOrders();
   const { data: dashboardData, loading: dashboardLoading, error: dashboardError } = useManufacturingDashboard();
 
+  useEffect(() => {
+    // Debug the loading states vs data presence
+    // Remove if noisy after verification
+    console.debug('[Dashboard] ordersLoading:', ordersLoading, 'orders.length:', orders?.length || 0);
+    console.debug('[Dashboard] dashboardLoading:', dashboardLoading, 'hasDashboardData:', !!dashboardData);
+  }, [ordersLoading, orders?.length, dashboardLoading, dashboardData]);
+
   const statusTabs: { key: StatusTab; label: string }[] = [
     { key: 'All', label: 'All' },
     { key: 'DRAFT', label: 'Draft' },
@@ -53,7 +60,8 @@ export const Dashboard: React.FC = () => {
     navigate(`/manufacturing-orders/${id}`);
   };
 
-  const loading = ordersLoading || dashboardLoading;
+  // Avoid getting stuck in loading if one dataset is already available
+  const loading = (ordersLoading && orders.length === 0) || (dashboardLoading && !dashboardData);
   const error = ordersError || dashboardError;
 
   if (loading) {

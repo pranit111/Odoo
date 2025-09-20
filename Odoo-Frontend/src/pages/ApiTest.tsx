@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Sidebar } from '../components/Sidebar';
 import { 
   useProducts,
@@ -98,13 +98,20 @@ export const ApiTest: React.FC = () => {
     setLoading(false);
   };
 
-  // All hooks to test API endpoints
-  const productsData = useProducts({ autoFetch: activeSection === 'products' });
-  const workCentersData = useWorkCenters({ autoFetch: activeSection === 'workcenters' });
-  const bomsData = useBOMs({ autoFetch: activeSection === 'boms' });
-  const manufacturingOrdersData = useManufacturingOrders({ autoFetch: activeSection === 'manufacturing-orders' });
-  const workOrdersData = useWorkOrders({ autoFetch: activeSection === 'work-orders' });
-  const stockLedgerData = useStockLedger({ autoFetch: activeSection === 'stock-ledger' });
+  // All hooks to test API endpoints - using useMemo to stabilize params objects
+  const productsParams = useMemo(() => ({ autoFetch: activeSection === 'products' }), [activeSection]);
+  const workCentersParams = useMemo(() => ({ autoFetch: activeSection === 'workcenters' }), [activeSection]);
+  const bomsParams = useMemo(() => ({ autoFetch: activeSection === 'boms' }), [activeSection]);
+  const manufacturingOrdersParams = useMemo(() => ({ autoFetch: activeSection === 'manufacturing-orders' }), [activeSection]);
+  const workOrdersParams = useMemo(() => ({ autoFetch: activeSection === 'work-orders' }), [activeSection]);
+  const stockLedgerParams = useMemo(() => ({ autoFetch: activeSection === 'stock-ledger' }), [activeSection]);
+  
+  const productsData = useProducts(productsParams);
+  const workCentersData = useWorkCenters(workCentersParams);
+  const bomsData = useBOMs(bomsParams);
+  const manufacturingOrdersData = useManufacturingOrders(manufacturingOrdersParams);
+  const workOrdersData = useWorkOrders(workOrdersParams);
+  const stockLedgerData = useStockLedger(stockLedgerParams);
   const dashboardData = useManufacturingDashboard(activeSection === 'dashboard');
   const stockSummaryData = useStockSummary(activeSection === 'stock-summary');
   const myTasksData = useMyTasks(activeSection === 'my-tasks');

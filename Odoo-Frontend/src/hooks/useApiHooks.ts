@@ -56,7 +56,8 @@ function useApiState<T>(initialState: T | null = null): [
   });
 
   const setData = useCallback((data: T | null) => {
-    setState(prev => ({ ...prev, data, error: null }));
+    // When data arrives, ensure loading is turned off and errors are cleared
+    setState(prev => ({ ...prev, data, error: null, loading: false }));
   }, []);
 
   const setLoading = useCallback((loading: boolean) => {
@@ -106,7 +107,7 @@ export function useProducts(params?: {
         loading: false,
       }));
     }
-  }, [params]);
+  }, [params?.product_type, params?.is_active, params?.search, params?.ordering, params?.page]);
 
   const createProduct = useCallback(async (data: CreateProductData): Promise<Product> => {
     const product = await apiClient.createProduct(data);
@@ -233,16 +234,33 @@ export function useWorkCenters(params?: {
     setState(prev => ({ ...prev, loading: true, error: null }));
     try {
       const response = await apiClient.getWorkCenters(params);
-      setState(prev => ({
-        ...prev,
-        data: response.results,
-        pagination: {
-          count: response.count,
-          next: response.next,
-          previous: response.previous,
-        },
-        loading: false,
-      }));
+      
+      // Handle both array and paginated response formats
+      if (Array.isArray(response)) {
+        // Direct array response
+        setState(prev => ({
+          ...prev,
+          data: response,
+          pagination: {
+            count: response.length,
+            next: undefined,
+            previous: undefined,
+          },
+          loading: false,
+        }));
+      } else {
+        // Paginated response
+        setState(prev => ({
+          ...prev,
+          data: response.results,
+          pagination: {
+            count: response.count,
+            next: response.next,
+            previous: response.previous,
+          },
+          loading: false,
+        }));
+      }
     } catch (error) {
       setState(prev => ({
         ...prev,
@@ -250,7 +268,7 @@ export function useWorkCenters(params?: {
         loading: false,
       }));
     }
-  }, [params]);
+  }, [params?.search, params?.ordering, params?.is_active]);
 
   const createWorkCenter = useCallback(async (data: CreateWorkCenterData): Promise<WorkCenter> => {
     const workCenter = await apiClient.createWorkCenter(data);
@@ -375,7 +393,7 @@ export function useBOMs(params?: {
         loading: false,
       }));
     }
-  }, [params]);
+  }, [params?.search, params?.ordering, params?.is_active, params?.product]);
 
   const createBOM = useCallback(async (data: CreateBOMData): Promise<BOM> => {
     const bom = await apiClient.createBOM(data);
@@ -496,16 +514,31 @@ export function useManufacturingOrders(params?: {
     setState(prev => ({ ...prev, loading: true, error: null }));
     try {
       const response = await apiClient.getManufacturingOrders(params);
-      setState(prev => ({
-        ...prev,
-        data: response.results,
-        pagination: {
-          count: response.count,
-          next: response.next,
-          previous: response.previous,
-        },
-        loading: false,
-      }));
+      if (Array.isArray(response)) {
+        // Non-paginated array response
+        setState(prev => ({
+          ...prev,
+          data: response,
+          pagination: {
+            count: response.length,
+            next: undefined,
+            previous: undefined,
+          },
+          loading: false,
+        }));
+      } else {
+        // Paginated response
+        setState(prev => ({
+          ...prev,
+          data: response.results,
+          pagination: {
+            count: response.count,
+            next: response.next,
+            previous: response.previous,
+          },
+          loading: false,
+        }));
+      }
     } catch (error) {
       setState(prev => ({
         ...prev,
@@ -513,7 +546,7 @@ export function useManufacturingOrders(params?: {
         loading: false,
       }));
     }
-  }, [params]);
+  }, [params?.search, params?.ordering, params?.status, params?.priority, params?.assignee, params?.page]);
 
   const createManufacturingOrder = useCallback(async (data: CreateManufacturingOrderData): Promise<ManufacturingOrder> => {
     const mo = await apiClient.createManufacturingOrder(data);
@@ -669,7 +702,7 @@ export function useWorkOrders(params?: {
         loading: false,
       }));
     }
-  }, [params]);
+  }, [params?.search, params?.ordering, params?.status, params?.manufacturing_order, params?.work_center, params?.page]);
 
   const startWorkOrder = useCallback(async (id: string, data: StartWorkOrderData): Promise<{ message: string }> => {
     const result = await apiClient.startWorkOrder(id, data);
@@ -780,7 +813,7 @@ export function useStockLedger(params?: {
         loading: false,
       }));
     }
-  }, [params]);
+  }, [params?.search, params?.ordering, params?.product, params?.movement_type, params?.manufacturing_order, params?.date_from, params?.date_to, params?.page]);
 
   useEffect(() => {
     if (params?.autoFetch !== false) {

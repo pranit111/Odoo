@@ -31,23 +31,44 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
+    const timeoutId = setTimeout(() => {
+      // Safety: don't block UI forever on slow networks
+      if (!cancelled) setLoading(false);
+    }, 5000);
+
     const initAuth = async () => {
       try {
         const currentUser = authService.getUser();
         if (currentUser && authService.isAuthenticated()) {
-          // Verify the user profile is still valid
-          const profile = await authService.getUserProfile();
-          setUser(profile);
+          // Optimistically set user to unblock UI, then refresh profile in background
+          if (!cancelled) {
+            setUser(currentUser);
+            setLoading(false);
+          }
+          try {
+            const profile = await authService.getUserProfile();
+            if (!cancelled) setUser(profile);
+          } catch (e) {
+            console.warn('Auth profile refresh failed:', e);
+          }
+          return;
         }
       } catch (error) {
         console.error('Auth initialization failed:', error);
         authService.logout();
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
+        clearTimeout(timeoutId);
       }
     };
 
     initAuth();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
   }, []);
 
   const login = async (credentials: { username: string; password: string }) => {
@@ -63,9 +84,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const register = async (userData: { username: string; email: string; password: string; password_confirm: string }) => {
+  const register = async (userData: { username: string; email: string; password: string; password_confirm: string; role?: string }) => {
     try {
-      const result = await authService.register(userData);
+      const result = await authService.register({ ...userData, role: userData.role || 'OPERATOR' });
       return { success: true, data: result };
     } catch (error) {
       return { 

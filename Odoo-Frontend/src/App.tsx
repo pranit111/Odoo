@@ -3,6 +3,7 @@ import { AuthProvider } from './hooks/useAuth';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Login } from './pages/Login';
 import { Signup } from './pages/Signup';
+import { OTPVerification } from './pages/OTPVerification';
 import { Dashboard } from './pages/Dashboard';
 import { ManufacturingOrderForm } from './pages/ManufacturingOrderForm';
 import { ManufacturingOrderDetail } from './pages/ManufacturingOrderDetail';
@@ -23,6 +24,7 @@ function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
+          <Route path="/verify-otp" element={<OTPVerification />} />
           <Route path="/" element={
             <ProtectedRoute>
               <Dashboard />

@@ -10,6 +10,7 @@ export const ManufacturingOrderDetail: React.FC = () => {
   const navigate = useNavigate();
   const [mo, setMo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [workOrders, setWorkOrders] = useState<any[]>([]);
   const [componentRequirements, setComponentRequirements] = useState<any[]>([]);
 
@@ -18,22 +19,37 @@ export const ManufacturingOrderDetail: React.FC = () => {
   }, [id]);
 
   const loadMO = async () => {
+    console.log('Loading MO with ID:', id);
+    if (!id) {
+      setError('No manufacturing order ID provided');
+      setLoading(false);
+      return;
+    }
+
     try {
-      const mo = await apiClient.getManufacturingOrder(id!);
+      console.log('Calling API to get manufacturing order...');
+      const mo = await apiClient.getManufacturingOrder(id);
+      console.log('Received MO data:', mo);
       setMo(mo);
+      setError(null);
       
       // Set work orders from the MO response
       if (mo.work_orders) {
+        console.log('Setting work orders:', mo.work_orders);
         setWorkOrders(mo.work_orders);
       }
       
       // Set component requirements from the MO response
       if (mo.component_requirements) {
+        console.log('Setting component requirements:', mo.component_requirements);
         setComponentRequirements(mo.component_requirements);
       }
     } catch (error) {
       console.error('Error loading MO:', error);
+      setError(error instanceof Error ? error.message : 'Failed to load manufacturing order');
+      setMo(null);
     } finally {
+      console.log('Setting loading to false');
       setLoading(false);
     }
   };
@@ -67,11 +83,55 @@ export const ManufacturingOrderDetail: React.FC = () => {
     );
   }
 
+  if (error) {
+    return (
+      <AppLayout title="Manufacturing Order Details">
+        <div className="text-center py-12">
+          <div className="mb-4">
+            <div className="text-red-600 text-lg font-medium">Error loading manufacturing order</div>
+            <p className="text-gray-600 mt-2">{error}</p>
+          </div>
+          <div className="space-x-4">
+            <button
+              onClick={() => navigate('/manufacturing-orders/new')}
+              className="px-4 py-2 bg-black text-white rounded-md hover:bg-gray-800 transition-colors"
+            >
+              Create Manufacturing Order
+            </button>
+            <button
+              onClick={() => navigate(-1)}
+              className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
+            >
+              Go Back
+            </button>
+          </div>
+        </div>
+      </AppLayout>
+    );
+  }
+
   if (!mo) {
     return (
       <AppLayout title="Manufacturing Order Details">
         <div className="text-center py-12">
-          <p className="text-red-600">Manufacturing Order not found</p>
+          <div className="mb-4">
+            <div className="text-gray-600 text-lg font-medium">Manufacturing Order not found</div>
+            <p className="text-gray-500 mt-2">The manufacturing order you're looking for doesn't exist or may have been deleted.</p>
+          </div>
+          <div className="space-x-4">
+            <button
+              onClick={() => navigate('/manufacturing-orders/new')}
+              className="px-4 py-2 bg-black text-white rounded-md hover:bg-gray-800 transition-colors"
+            >
+              Create Manufacturing Order
+            </button>
+            <button
+              onClick={() => navigate(-1)}
+              className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
+            >
+              Go Back
+            </button>
+          </div>
         </div>
       </AppLayout>
     );

@@ -203,6 +203,7 @@ export interface CreateWorkCenterData {
   capacity_hours_per_day: string;
   description?: string;
   location?: string;
+  is_active?: boolean;
 }
 
 export interface CreateBOMData {
@@ -321,7 +322,8 @@ export class ApiClient {
       });
     }
     
-    const response = await this.makeRequest(`/products/${queryParams.toString()}`);
+  const query = queryParams.toString();
+  const response = await this.makeRequest(`/products/${query ? `?${query}` : ''}`);
     return this.handleResponse<PaginatedResponse<Product>>(response);
   }
 
@@ -383,7 +385,7 @@ export class ApiClient {
     search?: string;
     ordering?: string;
     is_active?: boolean;
-  }): Promise<PaginatedResponse<WorkCenter>> {
+  }): Promise<PaginatedResponse<WorkCenter> | WorkCenter[]> {
     const queryParams = new URLSearchParams();
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
@@ -394,7 +396,7 @@ export class ApiClient {
     }
     
     const response = await this.makeRequest(`/workcenters/?${queryParams.toString()}`);
-    return this.handleResponse<PaginatedResponse<WorkCenter>>(response);
+    return this.handleResponse<PaginatedResponse<WorkCenter> | WorkCenter[]>(response);
   }
 
   async getWorkCenter(id: string): Promise<WorkCenter> {
