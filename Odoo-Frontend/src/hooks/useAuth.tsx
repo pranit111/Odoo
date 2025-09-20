@@ -128,6 +128,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.error('Logout error:', error);
     } finally {
       setUser(null);
+      // Redirect to login page after logout
+      window.location.href = '/login';
     }
   };
 

@@ -1,43 +1,42 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, List, LayoutGrid } from 'lucide-react';
+import { Search, List, LayoutGrid, RefreshCw } from 'lucide-react';
 import { AppLayout } from '../components/AppLayout';
-
-interface StockLedgerItem {
-  id: number;
-  product: string;
-  unitCost: number;
-  unit: string;
-  totalValue: number;
-  onHand: number;
-  freeToUse: number;
-  incoming: number;
-  outgoing: number;
-}
+import { useStockLedger } from '../hooks/useApiHooks';
+import { StockLedgerEntry } from '../services/apiClient';
 
 export const StockLedger: React.FC = () => {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
-  const [stockItems, setStockItems] = useState<StockLedgerItem[]>([]);
-  const [filteredItems, setFilteredItems] = useState<StockLedgerItem[]>([]);
+  const [movementTypeFilter, setMovementTypeFilter] = useState<'MO_CONSUMPTION' | 'MO_PRODUCTION' | 'MANUAL_ADJUSTMENT' | 'STOCK_ADJUSTMENT' | ''>('');
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
 
-  useEffect(() => {
-    const data = getStockLedgerData();
-    setStockItems(data);
-    setFilteredItems(data);
-  }, []);
+  // Memoize the hook parameters to prevent infinite re-renders
+  const hookParams = useMemo(() => ({
+    search: searchTerm || undefined,
+    movement_type: movementTypeFilter || undefined,
+    autoFetch: true
+  }), [searchTerm, movementTypeFilter]);
 
-  useEffect(() => {
+  // Use the real API hook
+  const { 
+    data: stockLedgerData = [], 
+    loading, 
+    error, 
+    refetch 
+  } = useStockLedger(hookParams);
+
+  // Compute filtered items directly without state to avoid infinite re-renders
+  const filteredItems = useMemo(() => {
     if (searchTerm.trim() === '') {
-      setFilteredItems(stockItems);
+      return stockLedgerData;
     } else {
-      const filtered = stockItems.filter(item => 
-        item.product.toLowerCase().includes(searchTerm.toLowerCase())
+      return stockLedgerData.filter((item: StockLedgerEntry) => 
+        item.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.product_sku.toLowerCase().includes(searchTerm.toLowerCase())
       );
-      setFilteredItems(filtered);
     }
-  }, [searchTerm, stockItems]);
+  }, [stockLedgerData, searchTerm]);
 
   const handleSearch = () => {
     // Search functionality is handled by useEffect on searchTerm change
@@ -50,11 +49,35 @@ export const StockLedger: React.FC = () => {
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return `${amount.toLocaleString()} Rs`;
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-IN', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const getMovementTypeDisplay = (type: string) => {
+    const types = {
+      'MO_CONSUMPTION': 'Material Consumption',
+      'MO_PRODUCTION': 'Production',
+      'MANUAL_ADJUSTMENT': 'Manual Adjustment',
+      'STOCK_ADJUSTMENT': 'Stock Adjustment'
+    };
+    return types[type as keyof typeof types] || type;
+  };
+
+  const getQuantityChangeColor = (quantity: string) => {
+    const num = parseFloat(quantity);
+    if (num > 0) return 'text-green-600';
+    if (num < 0) return 'text-red-600';
+    return 'text-gray-600';
   };
 
   const handleNewStock = () => {
+    console.log('Navigating to stock ledger form...');
     navigate('/stock-ledger/new');
   };
 
@@ -72,6 +95,19 @@ export const StockLedger: React.FC = () => {
           
           {/* Search Section */}
           <div className="flex items-center gap-2">
+            {/* Movement Type Filter */}
+            <select
+              value={movementTypeFilter}
+              onChange={(e) => setMovementTypeFilter(e.target.value as any)}
+              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-black focus:border-black text-sm"
+            >
+              <option value="">All Types</option>
+              <option value="MO_CONSUMPTION">Material Consumption</option>
+              <option value="MO_PRODUCTION">Production</option>
+              <option value="MANUAL_ADJUSTMENT">Manual Adjustment</option>
+              <option value="STOCK_ADJUSTMENT">Stock Adjustment</option>
+            </select>
+            
             <div className="relative">
               <input
                 type="text"
@@ -88,6 +124,14 @@ export const StockLedger: React.FC = () => {
               title="Search"
             >
               <Search size={20} />
+            </button>
+            
+            <button 
+              onClick={refetch}
+              className="p-2 text-black border border-gray-300 hover:bg-gray-100 rounded-md transition-colors"
+              title="Refresh"
+            >
+              <RefreshCw size={20} />
             </button>
             
             {/* View Mode Toggle */}
@@ -126,36 +170,64 @@ export const StockLedger: React.FC = () => {
                 <thead>
                   <tr className="border-b border-gray-200 bg-gray-50">
                     <th className="text-left p-4 text-sm font-medium text-gray-700">Product</th>
-                    <th className="text-left p-4 text-sm font-medium text-gray-700">Unit Cost</th>
-                    <th className="text-left p-4 text-sm font-medium text-gray-700">Unit</th>
-                    <th className="text-left p-4 text-sm font-medium text-gray-700">Total Value</th>
-                    <th className="text-left p-4 text-sm font-medium text-gray-700">On Hand</th>
-                    <th className="text-left p-4 text-sm font-medium text-gray-700">Free to Use</th>
-                    <th className="text-left p-4 text-sm font-medium text-gray-700">Incoming</th>
-                    <th className="text-left p-4 text-sm font-medium text-gray-700">Outgoing</th>
+                    <th className="text-left p-4 text-sm font-medium text-gray-700">Movement Type</th>
+                    <th className="text-left p-4 text-sm font-medium text-gray-700">Quantity Change</th>
+                    <th className="text-left p-4 text-sm font-medium text-gray-700">Stock Before</th>
+                    <th className="text-left p-4 text-sm font-medium text-gray-700">Stock After</th>
+                    <th className="text-left p-4 text-sm font-medium text-gray-700">Reference</th>
+                    <th className="text-left p-4 text-sm font-medium text-gray-700">Date</th>
+                    <th className="text-left p-4 text-sm font-medium text-gray-700">Created By</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredItems.length > 0 ? (
+                  {loading ? (
+                    <tr>
+                      <td colSpan={8} className="p-8 text-center text-gray-500">
+                        Loading stock movements...
+                      </td>
+                    </tr>
+                  ) : error ? (
+                    <tr>
+                      <td colSpan={8} className="p-8 text-center text-red-500">
+                        Error loading data: {error}
+                      </td>
+                    </tr>
+                  ) : filteredItems.length > 0 ? (
                     filteredItems.map((item) => (
                       <tr 
-                        key={item.id} 
+                        key={item.ledger_id} 
                         className="border-b border-gray-200 hover:bg-gray-50 cursor-pointer transition-colors"
                       >
-                        <td className="p-4 text-sm text-gray-900 font-medium">{item.product}</td>
-                        <td className="p-4 text-sm text-gray-900">{formatCurrency(item.unitCost)}</td>
-                        <td className="p-4 text-sm text-gray-900">{item.unit}</td>
-                        <td className="p-4 text-sm text-gray-900 font-medium">{item.totalValue.toLocaleString()}</td>
-                        <td className="p-4 text-sm text-gray-900">{item.onHand}</td>
-                        <td className="p-4 text-sm text-gray-900">{item.freeToUse}</td>
-                        <td className="p-4 text-sm text-green-600">{item.incoming}</td>
-                        <td className="p-4 text-sm text-red-600">{item.outgoing}</td>
+                        <td className="p-4 text-sm text-gray-900 font-medium">
+                          <div>
+                            <div className="font-medium">{item.product_name}</div>
+                            <div className="text-xs text-gray-500">{item.product_sku}</div>
+                          </div>
+                        </td>
+                        <td className="p-4 text-sm text-gray-900">
+                          <span className="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-800">
+                            {getMovementTypeDisplay(item.movement_type)}
+                          </span>
+                        </td>
+                        <td className={`p-4 text-sm font-medium ${getQuantityChangeColor(item.quantity_change)}`}>
+                          {parseFloat(item.quantity_change) > 0 ? '+' : ''}{item.quantity_change}
+                        </td>
+                        <td className="p-4 text-sm text-gray-900">{item.stock_before}</td>
+                        <td className="p-4 text-sm text-gray-900 font-medium">{item.stock_after}</td>
+                        <td className="p-4 text-sm text-gray-900">
+                          {item.reference_number || '-'}
+                          {item.mo_number && (
+                            <div className="text-xs text-blue-600">{item.mo_number}</div>
+                          )}
+                        </td>
+                        <td className="p-4 text-sm text-gray-900">{formatDate(item.transaction_time)}</td>
+                        <td className="p-4 text-sm text-gray-900">{item.created_by_name}</td>
                       </tr>
                     ))
                   ) : (
                     <tr>
                       <td colSpan={8} className="p-8 text-center text-gray-500">
-                        {searchTerm ? 'No products found matching your search.' : 'No stock data available.'}
+                        {searchTerm ? 'No stock movements found matching your search.' : 'No stock movements available.'}
                       </td>
                     </tr>
                   )}
@@ -165,45 +237,58 @@ export const StockLedger: React.FC = () => {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredItems.length > 0 ? (
+            {loading ? (
+              <div className="col-span-full flex flex-col items-center justify-center py-12 text-gray-500">
+                <p>Loading stock movements...</p>
+              </div>
+            ) : error ? (
+              <div className="col-span-full flex flex-col items-center justify-center py-12 text-red-500">
+                <p>Error loading data: {error}</p>
+              </div>
+            ) : filteredItems.length > 0 ? (
               filteredItems.map((item) => (
                 <div 
-                  key={item.id}
+                  key={item.ledger_id}
                   className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md cursor-pointer transition-all hover:border-gray-300"
                 >
                   <div className="space-y-3">
-                    <h3 className="font-medium text-gray-900">{item.product}</h3>
+                    <div>
+                      <h3 className="font-medium text-gray-900">{item.product_name}</h3>
+                      <p className="text-sm text-gray-500">{item.product_sku}</p>
+                    </div>
                     <div className="grid grid-cols-2 gap-2 text-sm">
                       <div>
-                        <span className="text-gray-500">Unit Cost:</span>
-                        <p className="font-medium">{formatCurrency(item.unitCost)}</p>
+                        <span className="text-gray-500">Movement:</span>
+                        <p className="font-medium text-xs">
+                          <span className="px-2 py-1 rounded-full bg-gray-100 text-gray-800">
+                            {getMovementTypeDisplay(item.movement_type)}
+                          </span>
+                        </p>
                       </div>
                       <div>
-                        <span className="text-gray-500">Unit:</span>
-                        <p className="font-medium">{item.unit}</p>
+                        <span className="text-gray-500">Change:</span>
+                        <p className={`font-medium ${getQuantityChangeColor(item.quantity_change)}`}>
+                          {parseFloat(item.quantity_change) > 0 ? '+' : ''}{item.quantity_change}
+                        </p>
                       </div>
                       <div>
-                        <span className="text-gray-500">Total Value:</span>
-                        <p className="font-medium">{item.totalValue.toLocaleString()}</p>
+                        <span className="text-gray-500">Before:</span>
+                        <p className="font-medium">{item.stock_before}</p>
                       </div>
                       <div>
-                        <span className="text-gray-500">On Hand:</span>
-                        <p className="font-medium">{item.onHand}</p>
+                        <span className="text-gray-500">After:</span>
+                        <p className="font-medium">{item.stock_after}</p>
                       </div>
-                      <div>
-                        <span className="text-gray-500">Free to Use:</span>
-                        <p className="font-medium">{item.freeToUse}</p>
+                      <div className="col-span-2">
+                        <span className="text-gray-500">Date:</span>
+                        <p className="font-medium text-xs">{formatDate(item.transaction_time)}</p>
                       </div>
-                      <div className="flex justify-between">
-                        <div>
-                          <span className="text-gray-500 text-xs">In:</span>
-                          <p className="font-medium text-green-600">{item.incoming}</p>
+                      {item.reference_number && (
+                        <div className="col-span-2">
+                          <span className="text-gray-500">Reference:</span>
+                          <p className="font-medium text-xs">{item.reference_number}</p>
                         </div>
-                        <div>
-                          <span className="text-gray-500 text-xs">Out:</span>
-                          <p className="font-medium text-red-600">{item.outgoing}</p>
-                        </div>
-                      </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -211,7 +296,7 @@ export const StockLedger: React.FC = () => {
             ) : (
               <div className="col-span-full flex flex-col items-center justify-center py-12 text-gray-500">
                 <LayoutGrid size={48} className="mb-4 text-gray-300" />
-                <p>{searchTerm ? 'No products found matching your search.' : 'No stock data available.'}</p>
+                <p>{searchTerm ? 'No stock movements found matching your search.' : 'No stock movements available.'}</p>
               </div>
             )}
           </div>
@@ -220,7 +305,7 @@ export const StockLedger: React.FC = () => {
         {/* Results Summary */}
         {searchTerm && (
           <div className="mt-4 text-sm text-gray-600">
-            Showing {filteredItems.length} of {stockItems.length} products
+            Showing {filteredItems.length} stock movements
           </div>
         )}
       </div>

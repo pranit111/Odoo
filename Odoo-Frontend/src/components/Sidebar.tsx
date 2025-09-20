@@ -1,11 +1,12 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { User, Package, Settings, FileText, BarChart3, LogOut, Wrench, Clipboard, Code } from 'lucide-react';
-import { authService } from '../services/auth';
+import { useAuth } from '../hooks/useAuth';
 
 export const Sidebar: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { logout } = useAuth();
 
   const sidebarItems = [
     { name: 'Manufacturing Orders', path: '/', icon: Package },
@@ -17,16 +18,8 @@ export const Sidebar: React.FC = () => {
     { name: 'API Test', path: '/api-test', icon: Code }
   ];
 
-  const handleLogout = async () => {
-    try {
-      await authService.logout();
-      // Redirect to login page after successful logout
-      navigate('/login');
-    } catch (error) {
-      console.error('Logout failed:', error);
-      // Even if logout fails, clear local storage and redirect
-      navigate('/login');
-    }
+  const handleLogout = () => {
+    logout();
   };
 
   const isActive = (path: string) => {

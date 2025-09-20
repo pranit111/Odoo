@@ -250,6 +250,14 @@ export interface CreateBOMComponentData {
   notes?: string;
 }
 
+export interface CreateStockLedgerData {
+  product: string;
+  quantity_change: string;
+  movement_type: 'MANUAL_ADJUSTMENT' | 'STOCK_ADJUSTMENT';
+  reference_number?: string;
+  notes?: string;
+}
+
 export interface CreateStockAdjustmentData {
   product: string;
   expected_quantity: string;
@@ -785,6 +793,14 @@ export class ApiClient {
   async getProductStockLedger(productId: string): Promise<StockLedgerEntry[]> {
     const response = await this.makeRequest(`/stock-ledger/by_product/?product_id=${productId}`);
     return this.handleResponse<StockLedgerEntry[]>(response);
+  }
+
+  async createStockLedger(data: CreateStockLedgerData): Promise<StockLedgerEntry> {
+    const response = await this.makeRequest('/stock-ledger/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return this.handleResponse<StockLedgerEntry>(response);
   }
 
   // Stock Adjustments API
