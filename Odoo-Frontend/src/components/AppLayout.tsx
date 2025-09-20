@@ -1,6 +1,6 @@
 import React from 'react';
 import { Sidebar } from './Sidebar';
-import { User } from 'lucide-react';
+import { ProfileDropdown } from './ProfileDropdown';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -23,7 +23,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children, title }) => {
             </div>
             
             <div className="flex items-center gap-2">
-              <User size={20} className="text-gray-600" />
+              <ProfileDropdown />
             </div>
           </div>
         </div>
