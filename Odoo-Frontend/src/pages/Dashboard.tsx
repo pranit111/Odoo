@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, User } from 'lucide-react';
+import { Plus, Search } from 'lucide-react';
 import { useManufacturingOrders, useManufacturingDashboard } from '../hooks/useApiHooks';
 import { Sidebar } from '../components/Sidebar';
+import { ProfileDropdown } from '../components/ProfileDropdown';
 
 type StatusTab = 'All' | 'DRAFT' | 'CONFIRMED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELED';
 
@@ -101,7 +102,7 @@ export const Dashboard: React.FC = () => {
             </div>
             
             <div className="flex items-center gap-2">
-              <User size={20} className="text-gray-600" />
+              <ProfileDropdown />
             </div>
           </div>
         </div>

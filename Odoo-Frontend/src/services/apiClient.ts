@@ -955,6 +955,43 @@ export class ApiClient {
     const response = await this.makeRequest(`/inventory-reports/production_analysis/?days=${days}`);
     return this.handleResponse<any>(response);
   }
+
+  // Profile Management Methods
+  async sendEmailChangeOTP(data: { newEmail: string }): Promise<{ message: string }> {
+    const response = await this.makeRequest('/auth/send-email-change-otp/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    return this.handleResponse<{ message: string }>(response);
+  }
+
+  async changeEmail(data: { newEmail: string; otp: string }): Promise<{ message: string }> {
+    const response = await this.makeRequest('/auth/change-email/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    return this.handleResponse<{ message: string }>(response);
+  }
+
+  async sendPasswordChangeOTP(data: { username: string; currentPassword: string }): Promise<{ message: string }> {
+    const response = await this.makeRequest('/auth/send-password-change-otp/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    return this.handleResponse<{ message: string }>(response);
+  }
+
+  async changePassword(data: { currentPassword: string; newPassword: string; otp: string }): Promise<{ message: string }> {
+    const response = await this.makeRequest('/auth/change-password/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    return this.handleResponse<{ message: string }>(response);
+  }
 }
 
 // Create a singleton instance

@@ -18,4 +18,10 @@ urlpatterns = [
     # User profile
     path('profile/', views.user_profile, name='profile'),
     path('profile/update/', views.update_profile, name='update_profile'),
+    
+    # Profile management endpoints
+    path('send-email-change-otp/', views.send_email_change_otp, name='send_email_change_otp'),
+    path('change-email/', views.change_email, name='change_email'),
+    path('send-password-change-otp/', views.send_password_change_otp, name='send_password_change_otp'),
+    path('change-password/', views.change_password, name='change_password'),
 ]

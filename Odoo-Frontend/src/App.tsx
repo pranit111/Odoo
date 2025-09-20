@@ -12,11 +12,11 @@ import { StockLedger } from './pages/StockLedger';
 import { StockLedgerForm } from './pages/StockLedgerForm';
 import { Reports } from './pages/Reports';
 import { ApiTest } from './pages/ApiTest';
-
 import { WorkOrders } from './pages/WorkOrders';
-
+import { WorkOrdersAnalysis } from './pages/WorkOrdersAnalysis';
 import { BillsOfMaterials } from './pages/BillsOfMaterials';
 import { BillOfMaterialForm } from './pages/BillOfMaterialForm';
+import { ProfileSetup } from './pages/ProfileSetup';
 
 function App() {
   return (
@@ -84,6 +84,16 @@ function App() {
           <Route path="/api-test" element={
             <ProtectedRoute>
               <ApiTest />
+            </ProtectedRoute>
+          } />
+          <Route path="/my-reports" element={
+            <ProtectedRoute>
+              <WorkOrdersAnalysis />
+            </ProtectedRoute>
+          } />
+          <Route path="/profile-setup" element={
+            <ProtectedRoute>
+              <ProfileSetup />
             </ProtectedRoute>
           } />
           <Route path="*" element={<Navigate to="/" replace />} />

@@ -13,7 +13,11 @@ from .serializers import (
     SendOTPSerializer,
     VerifyOTPSerializer,
     LoginSerializer,
-    UserProfileSerializer
+    UserProfileSerializer,
+    SendEmailChangeOTPSerializer,
+    ChangeEmailSerializer,
+    SendPasswordChangeOTPSerializer,
+    ChangePasswordSerializer
 )
 from .utils import send_otp_email
 
@@ -181,3 +185,157 @@ def logout_user(request):
         return Response({
             'error': 'Invalid token.'
         }, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def send_email_change_otp(request):
+    """
+    Send OTP for email change verification
+    """
+    serializer = SendEmailChangeOTPSerializer(data=request.data)
+    if serializer.is_valid():
+        new_email = serializer.validated_data['newEmail']
+        user = request.user
+        
+        try:
+            # Generate OTP first
+            otp = user.generate_otp()
+            
+            # Send OTP to the NEW email address using the specific function
+            from .utils import send_otp_to_email
+            send_otp_to_email(user, new_email, otp)
+            
+            logger.info(f"Email change OTP sent to {new_email} for user: {user.username}")
+            return Response({
+                'message': 'OTP sent to your new email address.'
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Failed to send email change OTP: {str(e)}")
+            return Response({
+                'error': 'Failed to send OTP. Please try again.'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def change_email(request):
+    """
+    Change user's email after OTP verification
+    """
+    serializer = ChangeEmailSerializer(data=request.data)
+    if serializer.is_valid():
+        new_email = serializer.validated_data['newEmail']
+        otp = serializer.validated_data['otp']
+        user = request.user
+        
+        # Verify OTP
+        if not user.verify_otp(otp):
+            return Response({
+                'error': 'Invalid or expired OTP.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Update email
+            user.email = new_email
+            user.save()
+            
+            logger.info(f"Email changed successfully for user: {user.username}")
+            return Response({
+                'message': 'Email address updated successfully.'
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Failed to change email: {str(e)}")
+            return Response({
+                'error': 'Failed to update email. Please try again.'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def send_password_change_otp(request):
+    """
+    Send OTP for password change verification
+    """
+    serializer = SendPasswordChangeOTPSerializer(data=request.data)
+    if serializer.is_valid():
+        username = serializer.validated_data['username']
+        current_password = serializer.validated_data['currentPassword']
+        
+        # Verify this is the same user
+        if request.user.username != username:
+            return Response({
+                'error': 'You can only change your own password.'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Validate current password before sending OTP
+        if not request.user.check_password(current_password):
+            return Response({
+                'error': 'Current password is incorrect.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Generate OTP first
+            otp = request.user.generate_otp()
+            
+            # Send OTP to user's current email (using original function)
+            send_otp_email(request.user, otp)
+            
+            logger.info(f"Password change OTP sent for user: {username}")
+            return Response({
+                'message': 'OTP sent to your registered email address.'
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Failed to send password change OTP: {str(e)}")
+            return Response({
+                'error': 'Failed to send OTP. Please try again.'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def change_password(request):
+    """
+    Change user's password after OTP verification
+    """
+    serializer = ChangePasswordSerializer(data=request.data)
+    if serializer.is_valid():
+        current_password = serializer.validated_data['currentPassword']
+        new_password = serializer.validated_data['newPassword']
+        otp = serializer.validated_data['otp']
+        user = request.user
+        
+        # Verify current password
+        if not user.check_password(current_password):
+            return Response({
+                'error': 'Current password is incorrect.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Verify OTP
+        if not user.verify_otp(otp):
+            return Response({
+                'error': 'Invalid or expired OTP.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Update password
+            user.set_password(new_password)
+            user.save()
+            
+            logger.info(f"Password changed successfully for user: {user.username}")
+            return Response({
+                'message': 'Password updated successfully.'
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Failed to change password: {str(e)}")
+            return Response({
+                'error': 'Failed to update password. Please try again.'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

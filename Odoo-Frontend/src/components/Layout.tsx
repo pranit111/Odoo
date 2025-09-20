@@ -1,6 +1,7 @@
 import React, { useState, ReactNode } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { ProfileDropdown } from './ProfileDropdown';
 import { 
   Menu, 
   X, 
@@ -96,6 +97,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
               <Menu size={24} />
             </button>
             <h1 className="text-xl font-semibold text-black">Manufacturing Dashboard</h1>
+            <div className="flex items-center gap-2">
+              <ProfileDropdown />
+            </div>
           </div>
         </header>
 
