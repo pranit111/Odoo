@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { User, Package, Settings, FileText, BarChart3, LogOut, Wrench, Clipboard, Code } from 'lucide-react';
+import { User, Package, Settings, FileText, BarChart3, LogOut, Wrench, Clipboard } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
 export const Sidebar: React.FC = () => {
@@ -14,8 +14,7 @@ export const Sidebar: React.FC = () => {
     { name: 'Bills of Materials', path: '/bills-of-materials', icon: Clipboard },
     { name: 'Work Centers', path: '/work-centers', icon: Settings },
     { name: 'Stock Ledger', path: '/stock-ledger', icon: FileText },
-    { name: 'Reports', path: '/reports', icon: BarChart3 },
-    { name: 'API Test', path: '/api-test', icon: Code }
+    { name: 'Reports', path: '/reports', icon: BarChart3 }
   ];
 
   const handleLogout = () => {

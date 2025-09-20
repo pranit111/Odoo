@@ -11,7 +11,6 @@ import { WorkCenterList } from './pages/WorkCenterList';
 import { StockLedger } from './pages/StockLedger';
 import { StockLedgerForm } from './pages/StockLedgerForm';
 import { Reports } from './pages/Reports';
-import { ApiTest } from './pages/ApiTest';
 import { WorkOrders } from './pages/WorkOrders';
 import { WorkOrdersAnalysis } from './pages/WorkOrdersAnalysis';
 import { BillsOfMaterials } from './pages/BillsOfMaterials';
@@ -79,11 +78,6 @@ function App() {
           <Route path="/bills-of-materials/new" element={
             <ProtectedRoute>
               <BillOfMaterialForm />
-            </ProtectedRoute>
-          } />
-          <Route path="/api-test" element={
-            <ProtectedRoute>
-              <ApiTest />
             </ProtectedRoute>
           } />
           <Route path="/my-reports" element={
