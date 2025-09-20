@@ -4,11 +4,13 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django.shortcuts import get_object_or_404
+from django.db import models
 from .models import BOM, BOMComponent, BOMOperation
 from .serializers import (
     BOMSerializer, BOMListSerializer, BOMComponentSerializer,
     BOMOperationSerializer, BOMComponentCreateSerializer,
-    BOMOperationCreateSerializer
+    BOMOperationCreateSerializer, BOMOperationListSerializer,
+    BOMOperationUpdateSerializer
 )
 
 class BOMViewSet(viewsets.ModelViewSet):
@@ -162,3 +164,121 @@ class BOMViewSet(viewsets.ModelViewSet):
             BOMSerializer(new_bom, context={'request': request}).data,
             status=status.HTTP_201_CREATED
         )
+
+
+class BOMOperationViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for BOM Operation CRUD operations
+    """
+    queryset = BOMOperation.objects.all()
+    permission_classes = [IsAuthenticated]
+    filter_backends = [SearchFilter, OrderingFilter]
+    search_fields = ['name', 'bom__name', 'bom__product__name', 'work_center__name']
+    ordering_fields = ['name', 'sequence', 'bom__name', 'work_center__name']
+    ordering = ['bom__product__name', 'sequence']
+    
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return BOMOperationListSerializer
+        elif self.action in ['update', 'partial_update']:
+            return BOMOperationUpdateSerializer
+        elif self.action == 'create':
+            return BOMOperationCreateSerializer
+        return BOMOperationSerializer
+    
+    def get_queryset(self):
+        """Filter operations by BOM if specified"""
+        queryset = BOMOperation.objects.all()
+        bom_id = self.request.query_params.get('bom', None)
+        if bom_id:
+            queryset = queryset.filter(bom__bom_id=bom_id)
+        return queryset
+    
+    @action(detail=False, methods=['get'])
+    def by_bom(self, request):
+        """
+        Get operations for a specific BOM
+        GET /api/bom-operations/by_bom/?bom_id={uuid}
+        """
+        bom_id = request.query_params.get('bom_id')
+        if not bom_id:
+            return Response(
+                {'error': 'bom_id parameter is required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        operations = BOMOperation.objects.filter(bom__bom_id=bom_id).order_by('sequence')
+        serializer = BOMOperationListSerializer(operations, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def by_work_center(self, request):
+        """
+        Get operations for a specific work center
+        GET /api/bom-operations/by_work_center/?work_center_id={uuid}
+        """
+        work_center_id = request.query_params.get('work_center_id')
+        if not work_center_id:
+            return Response(
+                {'error': 'work_center_id parameter is required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        operations = BOMOperation.objects.filter(work_center__work_center_id=work_center_id)
+        serializer = BOMOperationListSerializer(operations, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def duplicate(self, request, pk=None):
+        """
+        Duplicate an operation to another BOM
+        POST /api/bom-operations/{id}/duplicate/
+        """
+        operation = self.get_object()
+        target_bom_id = request.data.get('target_bom_id')
+        sequence = request.data.get('sequence')
+        
+        if not target_bom_id:
+            return Response(
+                {'error': 'target_bom_id is required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            target_bom = BOM.objects.get(bom_id=target_bom_id)
+            
+            # Check if sequence already exists
+            if sequence and BOMOperation.objects.filter(bom=target_bom, sequence=sequence).exists():
+                return Response(
+                    {'error': f'Sequence {sequence} already exists in target BOM'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Find next available sequence if not provided
+            if not sequence:
+                max_seq = BOMOperation.objects.filter(bom=target_bom).aggregate(
+                    max_seq=models.Max('sequence')
+                )['max_seq'] or 0
+                sequence = max_seq + 1
+            
+            # Create duplicate
+            new_operation = BOMOperation.objects.create(
+                bom=target_bom,
+                name=operation.name,
+                sequence=sequence,
+                work_center=operation.work_center,
+                duration_minutes=operation.duration_minutes,
+                setup_time_minutes=operation.setup_time_minutes,
+                description=operation.description
+            )
+            
+            return Response(
+                BOMOperationSerializer(new_operation).data,
+                status=status.HTTP_201_CREATED
+            )
+            
+        except BOM.DoesNotExist:
+            return Response(
+                {'error': 'Target BOM not found'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )

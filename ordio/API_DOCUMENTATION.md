@@ -210,14 +210,414 @@ http://localhost:8000/api/
 
 ### **4.1 List Manufacturing Orders**
 - **GET** `/api/manufacturing-orders/`
+- **Description:** Get paginated list of all manufacturing orders
+- **Query Parameters:**
+  - `search`: Search by MO number, product name, or SKU
+  - `ordering`: Sort by mo_number, created_at, scheduled_start_date
+  - `status`: Filter by status (DRAFT, CONFIRMED, IN_PROGRESS, COMPLETED, CANCELED)
+  - `priority`: Filter by priority (LOW, MEDIUM, HIGH, URGENT)
 
 **Response Example:**
 ```json
 {
+  "count": 15,
   "results": [
     {
       "mo_id": "uuid-here",
       "mo_number": "MO20250901",
+      "product_name": "Wooden Table",
+      "product_sku": "WT-001",
+      "quantity_to_produce": 10,
+      "status": "IN_PROGRESS",
+      "priority": "MEDIUM",
+      "scheduled_start_date": "2025-09-21",
+      "assignee_name": "john_manager",
+      "progress_percentage": 33.33,
+      "work_order_count": 3,
+      "created_at": "2025-09-20T10:30:00Z"
+    }
+  ]
+}
+```
+
+### **4.2 Create Manufacturing Order**
+- **POST** `/api/manufacturing-orders/`
+- **Description:** Create a new manufacturing order
+
+**Request Body:**
+```json
+{
+  "product": "product-uuid-here",
+  "bom": "bom-uuid-here",
+  "quantity_to_produce": 5,
+  "priority": "HIGH",
+  "scheduled_start_date": "2025-09-22",
+  "assignee": "user-uuid-here",
+  "notes": "Urgent order for customer ABC"
+}
+```
+
+**Response:**
+```json
+{
+  "mo_id": "uuid-here",
+  "mo_number": "MO20250922",
+  "product_name": "Wooden Table",
+  "bom_name": "Standard Table BOM",
+  "quantity_to_produce": 5,
+  "status": "DRAFT",
+  "priority": "HIGH",
+  "scheduled_start_date": "2025-09-22",
+  "assignee_name": "manager_user",
+  "notes": "Urgent order for customer ABC",
+  "created_at": "2025-09-20T15:30:00Z"
+}
+```
+
+### **4.3 Get Manufacturing Order Details**
+- **GET** `/api/manufacturing-orders/{id}/`
+- **Description:** Get detailed information about a specific MO
+
+**Response Example:**
+```json
+{
+  "mo_id": "uuid-here",
+  "mo_number": "MO20250901",
+  "product_name": "Wooden Table",
+  "bom_name": "Standard Table BOM",
+  "quantity_to_produce": 10,
+  "status": "IN_PROGRESS",
+  "priority": "MEDIUM",
+  "scheduled_start_date": "2025-09-21",
+  "actual_start_date": "2025-09-21T08:00:00Z",
+  "assignee_name": "john_manager",
+  "notes": "Standard production order",
+  "progress_percentage": 66.67,
+  "work_orders": [
+    {
+      "wo_id": "uuid-here",
+      "wo_number": "MO20250901-01",
+      "name": "Cut Components",
+      "sequence": 1,
+      "status": "COMPLETED",
+      "work_center_name": "Cutting Station"
+    },
+    {
+      "wo_id": "uuid-here",
+      "wo_number": "MO20250901-02",
+      "name": "Assembly",
+      "sequence": 2,
+      "status": "IN_PROGRESS",
+      "work_center_name": "Assembly Line 1"
+    }
+  ],
+  "component_requirements": [
+    {
+      "component_name": "Wood Plank",
+      "required_quantity": 40.0,
+      "available_stock": 50.0,
+      "shortage": 0.0,
+      "is_sufficient": true
+    }
+  ]
+}
+```
+
+### **4.4 Manufacturing Order Actions**
+
+#### **4.4.1 Confirm MO**
+- **POST** `/api/manufacturing-orders/{id}/confirm/`
+- **Description:** Confirm MO and create work orders (checks component availability)
+
+**Request Body:** *(Optional)*
+```json
+{
+  "force_confirm": false
+}
+```
+
+#### **4.4.2 Complete MO**
+- **POST** `/api/manufacturing-orders/{id}/complete/`
+- **Description:** Complete MO and process final stock movements
+
+**Request Body:** *(Optional)*
+```json
+{
+  "notes": "Production completed successfully"
+}
+```
+
+#### **4.4.3 Cancel MO**
+- **POST** `/api/manufacturing-orders/{id}/cancel/`
+- **Description:** Cancel manufacturing order
+
+**Request Body:**
+```json
+{
+  "reason": "Customer canceled order"
+}
+```
+
+### **4.5 Component Requirements**
+- **GET** `/api/manufacturing-orders/{id}/component_requirements/`
+- **Description:** Check component availability for MO
+
+**Response Example:**
+```json
+{
+  "mo_number": "MO20250901",
+  "quantity_to_produce": 10,
+  "requirements": [
+    {
+      "component_name": "Wood Plank",
+      "component_sku": "WP-001",
+      "required_quantity": 40.0,
+      "available_stock": 50.0,
+      "shortage": 0.0,
+      "is_sufficient": true
+    },
+    {
+      "component_name": "Wood Screws",
+      "component_sku": "WS-001",
+      "required_quantity": 160.0,
+      "available_stock": 100.0,
+      "shortage": 60.0,
+      "is_sufficient": false
+    }
+  ],
+  "all_sufficient": false,
+  "total_shortages": 1
+}
+```
+
+### **4.6 Dashboard & Reports**
+- **GET** `/api/manufacturing-orders/dashboard/`
+- **Description:** Get MO statistics and recent orders
+
+**Response Example:**
+```json
+{
+  "statistics": {
+    "total_mos": 25,
+    "draft": 3,
+    "confirmed": 5,
+    "in_progress": 8,
+    "completed": 9,
+    "canceled": 0
+  },
+  "recent_orders": [
+    {
+      "mo_id": "uuid-here",
+      "mo_number": "MO20250920",
+      "product_name": "Wooden Table",
+      "quantity_to_produce": 5,
+      "status": "DRAFT",
+      "created_at": "2025-09-20T14:30:00Z"
+    }
+  ]
+}
+```
+
+### **4.7 Special Filters**
+- **GET** `/api/manufacturing-orders/?status=DRAFT` - Get draft orders
+- **GET** `/api/manufacturing-orders/?priority=HIGH` - Get high priority orders  
+- **GET** `/api/manufacturing-orders/?assignee={user_id}` - Get orders by assignee
+
+---
+
+## ⚙️ **5. Work Orders API**
+
+### **Base Endpoint:** `/api/work-orders/`
+
+### **5.1 List Work Orders**
+- **GET** `/api/work-orders/`
+- **Description:** Get list of all work orders
+
+**Query Parameters:**
+- `search`: Search by WO number, name, MO number
+- `ordering`: Sort by wo_number, sequence, created_at
+- `status`: Filter by status (PENDING, IN_PROGRESS, COMPLETED, CANCELED)
+- `manufacturing_order`: Filter by MO ID
+- `work_center`: Filter by work center ID
+
+**Response Example:**
+```json
+{
+  "count": 20,
+  "results": [
+    {
+      "wo_id": "uuid-here",
+      "wo_number": "MO20250901-01",
+      "name": "Cut Components",
+      "manufacturing_order_number": "MO20250901",
+      "work_center_name": "Cutting Station",
+      "sequence": 1,
+      "status": "IN_PROGRESS",
+      "operator_name": "operator1",
+      "estimated_duration_minutes": 120,
+      "actual_duration_minutes": 0,
+      "efficiency_percentage": 0,
+      "scheduled_start": "2025-09-21T08:00:00Z",
+      "is_overdue": false
+    }
+  ]
+}
+```
+
+### **5.2 Get Work Order Details**
+- **GET** `/api/work-orders/{id}/`
+
+**Response Example:**
+```json
+{
+  "wo_id": "uuid-here",
+  "wo_number": "MO20250901-01",
+  "name": "Cut Components",
+  "manufacturing_order_number": "MO20250901",
+  "work_center_name": "Cutting Station",
+  "work_center_code": "CUT1",
+  "sequence": 1,
+  "status": "IN_PROGRESS",
+  "operator_name": "operator1",
+  "estimated_duration_minutes": 120,
+  "actual_start_date": "2025-09-21T08:15:00Z",
+  "actual_duration_minutes": 45,
+  "efficiency_percentage": 62.5,
+  "description": "Cut all wood components to required dimensions",
+  "notes": "Using new blade for better precision",
+  "scheduled_start": "2025-09-21T08:00:00Z",
+  "is_overdue": false
+}
+```
+
+### **5.3 Work Order Actions**
+
+#### **5.3.1 Start Work Order**
+- **POST** `/api/work-orders/{id}/start/`
+- **Description:** Start a work order
+
+**Request Body:**
+```json
+{
+  "operator": "user-uuid-here",
+  "notes": "Starting cutting process with new blade"
+}
+```
+
+#### **5.3.2 Pause Work Order**
+- **POST** `/api/work-orders/{id}/pause/`
+- **Description:** Pause work order (stops time tracking)
+
+**Request Body:**
+```json
+{
+  "notes": "Pausing for lunch break"
+}
+```
+
+#### **5.3.3 Resume Work Order**
+- **POST** `/api/work-orders/{id}/resume/`
+- **Description:** Resume paused work order
+
+**Request Body:**
+```json
+{
+  "notes": "Resuming after break"
+}
+```
+
+#### **5.3.4 Complete Work Order**
+- **POST** `/api/work-orders/{id}/complete/`
+- **Description:** Complete work order
+
+**Request Body:**
+```json
+{
+  "notes": "All components cut successfully",
+  "actual_duration": 110
+}
+```
+
+### **5.4 Special Endpoints**
+- **GET** `/api/work-orders/my_tasks/` - Get current user's assigned work orders
+- **GET** `/api/work-orders/pending/` - Get all pending work orders  
+- **GET** `/api/work-orders/active/` - Get all in-progress work orders
+- **GET** `/api/work-orders/overdue/` - Get overdue work orders
+
+**My Tasks Response:**
+```json
+{
+  "assigned_work_orders": [
+    {
+      "wo_id": "uuid-here",
+      "wo_number": "MO20250901-02",
+      "name": "Assembly",
+      "status": "PENDING",
+      "priority": "HIGH",
+      "estimated_duration_minutes": 180,
+      "scheduled_start": "2025-09-21T10:00:00Z"
+    }
+  ],
+  "total_assigned": 3,
+  "in_progress": 1,
+  "pending": 2
+}
+```
+
+### **5.5 Work Order Updates**
+- **PUT/PATCH** `/api/work-orders/{id}/`
+- **Description:** Update work order details
+
+**Request Body Example:**
+```json
+{
+  "notes": "Updated process instructions",
+  "estimated_duration_minutes": 90
+}
+```
+
+---
+
+## 📊 **6. BOM Operations API**
+
+### **Base Endpoint:** `/api/bom-operations/`
+
+### **6.1 List BOM Operations**
+- **GET** `/api/bom-operations/`
+- **Description:** Get list of all BOM operations (reusable across BOMs)
+
+**Query Parameters:**
+- `search`: Search by name, BOM name, work center name  
+- `ordering`: Sort by name, sequence, bom__name
+- `bom`: Filter by BOM ID
+
+### **6.2 Create BOM Operation**
+- **POST** `/api/bom-operations/`
+
+**Request Body:**
+```json
+{
+  "bom": "bom-uuid-here",
+  "name": "Wood Cutting",
+  "sequence": 1,
+  "work_center": "workcenter-uuid-here",
+  "duration_minutes": 45,
+  "setup_time_minutes": 15,
+  "description": "Cut wood components to required dimensions"
+}
+```
+
+### **6.3 Special Operations**
+- **GET** `/api/bom-operations/by_bom/?bom_id={uuid}` - Get operations for specific BOM
+- **GET** `/api/bom-operations/by_work_center/?work_center_id={uuid}` - Get operations for work center
+- **POST** `/api/bom-operations/{id}/duplicate/` - Duplicate operation to another BOM
+
+**Duplicate Request:**
+```json
+{
+  "target_bom_id": "target-bom-uuid",
+  "sequence": 3
+}
       "product_name": "Wooden Table",
       "quantity_to_produce": 10,
       "status": "IN_PROGRESS",

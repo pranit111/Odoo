@@ -25,20 +25,27 @@ class BOMComponentSerializer(serializers.ModelSerializer):
 class BOMOperationSerializer(serializers.ModelSerializer):
     """Serializer for BOM Operations"""
     
+    bom_name = serializers.CharField(source='bom.name', read_only=True)
+    bom_product_name = serializers.CharField(source='bom.product.name', read_only=True)
     work_center_name = serializers.CharField(source='work_center.name', read_only=True)
     work_center_code = serializers.CharField(source='work_center.code', read_only=True)
     operation_cost = serializers.SerializerMethodField()
+    total_time = serializers.SerializerMethodField()
     
     class Meta:
         model = BOMOperation
         fields = [
-            'id', 'name', 'sequence', 'work_center', 'work_center_name',
-            'work_center_code', 'duration_minutes', 'setup_time_minutes',
-            'description', 'operation_cost'
+            'id', 'bom', 'bom_name', 'bom_product_name', 'name', 'sequence', 
+            'work_center', 'work_center_name', 'work_center_code', 'duration_minutes', 
+            'setup_time_minutes', 'description', 'operation_cost', 'total_time'
         ]
+        read_only_fields = ['bom_name', 'bom_product_name', 'work_center_name', 'work_center_code']
     
     def get_operation_cost(self, obj):
         return obj.get_operation_cost(quantity=1)
+    
+    def get_total_time(self, obj):
+        return obj.get_total_time_minutes(quantity=1)
 
 class BOMSerializer(serializers.ModelSerializer):
     """Serializer for BOM model"""
@@ -106,6 +113,62 @@ class BOMOperationCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = BOMOperation
         fields = [
+            'bom', 'name', 'sequence', 'work_center', 'duration_minutes',
+            'setup_time_minutes', 'description'
+        ]
+    
+    def validate(self, data):
+        """Ensure sequence is unique within the BOM"""
+        bom = data.get('bom')
+        sequence = data.get('sequence')
+        
+        if BOMOperation.objects.filter(bom=bom, sequence=sequence).exists():
+            raise serializers.ValidationError({
+                'sequence': f'Sequence {sequence} already exists for this BOM'
+            })
+        
+        return data
+
+class BOMOperationListSerializer(serializers.ModelSerializer):
+    """Simplified serializer for BOM operations list"""
+    
+    bom_name = serializers.CharField(source='bom.name', read_only=True)
+    bom_product_name = serializers.CharField(source='bom.product.name', read_only=True)
+    work_center_name = serializers.CharField(source='work_center.name', read_only=True)
+    operation_cost = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = BOMOperation
+        fields = [
+            'id', 'bom', 'bom_name', 'bom_product_name', 'name', 'sequence',
+            'work_center_name', 'duration_minutes', 'operation_cost'
+        ]
+    
+    def get_operation_cost(self, obj):
+        return obj.get_operation_cost(quantity=1)
+
+class BOMOperationUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for updating BOM operations"""
+    
+    class Meta:
+        model = BOMOperation
+        fields = [
             'name', 'sequence', 'work_center', 'duration_minutes',
             'setup_time_minutes', 'description'
         ]
+    
+    def validate_sequence(self, value):
+        """Ensure sequence is unique within the BOM (excluding current instance)"""
+        instance = getattr(self, 'instance', None)
+        if instance:
+            existing = BOMOperation.objects.filter(
+                bom=instance.bom, 
+                sequence=value
+            ).exclude(id=instance.id)
+            
+            if existing.exists():
+                raise serializers.ValidationError(
+                    f'Sequence {value} already exists for this BOM'
+                )
+        
+        return value
