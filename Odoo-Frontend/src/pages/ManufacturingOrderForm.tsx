@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Plus, Play, Square, Pause, Check } from 'lucide-react';
 import { AppLayout } from '../components/AppLayout';
-import { useFinishedProducts, useRawMaterials, useBOMs, useManufacturingOrders } from '../hooks/useApiHooks';
+import { useFinishedProducts, useRawMaterials, useBOMs, useManufacturingOrders, useOperators } from '../hooks/useApiHooks';
 
 export const ManufacturingOrderForm: React.FC = () => {
   const navigate = useNavigate();
@@ -10,6 +10,7 @@ export const ManufacturingOrderForm: React.FC = () => {
   const { data: finishedProducts, loading: finishedProductsLoading } = useFinishedProducts();
   const { data: rawMaterials, loading: rawMaterialsLoading, refetch: refetchRawMaterials } = useRawMaterials();
   const { data: boms, loading: bomsLoading } = useBOMs({ is_active: true });
+  const { data: operators, loading: operatorsLoading } = useOperators();
   const { createManufacturingOrder, updateManufacturingOrder } = useManufacturingOrders({ autoFetch: false });
   const [activeTab, setActiveTab] = useState<'components' | 'workOrders'>('components');
   const [showAddProductModal, setShowAddProductModal] = useState(false);
@@ -41,44 +42,240 @@ export const ManufacturingOrderForm: React.FC = () => {
 
   const [workOrders, setWorkOrders] = useState([
     { 
+      wo_id: '',
       operation: 'Assembly-1', 
       workCenter: 'Work Center -1', 
       duration: '60:00', 
       realDuration: '00:00', 
       status: 'To Do',
       isPlaying: false,
-      isPaused: false
+      isPaused: false,
+      operator: null as string | null,
+      operator_name: null as string | null,
+      actual_duration_minutes: 0
     }
   ]);
 
-  const handlePlayPause = (index: number) => {
-    setWorkOrders(prev => prev.map((order, i) => 
-      i === index 
-        ? { ...order, isPlaying: !order.isPlaying, isPaused: false, status: order.isPlaying ? 'To Do' : 'Doing' }
-        : order
-    ));
+  const loadWorkOrders = async () => {
+    if (!moId) return;
+    
+    try {
+      const { apiClient } = await import('../services/apiClient');
+      const mo = await apiClient.getManufacturingOrder(moId);
+      if (mo.work_orders && mo.work_orders.length > 0) {
+        const formattedWorkOrders = mo.work_orders.map(wo => ({
+          wo_id: wo.wo_id,
+          operation: wo.name,
+          workCenter: wo.work_center_name,
+          duration: `${wo.estimated_duration_minutes}:00`,
+          realDuration: formatDuration(wo.actual_duration_minutes),
+          status: wo.status === 'PENDING' ? 'To Do' : 
+                  wo.status === 'IN_PROGRESS' ? 'Doing' : 
+                  wo.status === 'COMPLETED' ? 'Done' : wo.status,
+          isPlaying: wo.status === 'IN_PROGRESS',
+          isPaused: wo.status === 'IN_PROGRESS' && wo.actual_start_date !== null, // Consider paused if started but not completed
+          operator: wo.operator || null,
+          operator_name: wo.operator_name || null,
+          actual_duration_minutes: wo.actual_duration_minutes || 0
+        }));
+        setWorkOrders(formattedWorkOrders);
+      }
+    } catch (error) {
+      console.error('Error loading work orders:', error);
+    }
+  };
+  
+  const formatDuration = (minutes: number) => {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
   };
 
-  const handlePause = (index: number) => {
-    setWorkOrders(prev => prev.map((order, i) => 
-      i === index 
-        ? { ...order, isPlaying: false, isPaused: true }
-        : order
-    ));
+  const handlePlayPause = async (index: number) => {
+    const workOrder = workOrders[index];
+    if (!workOrder.wo_id) return;
+    
+    try {
+      const { apiClient } = await import('../services/apiClient');
+      
+      if (workOrder.isPlaying) {
+        // Pause the work order
+        await apiClient.pauseWorkOrder(workOrder.wo_id, { notes: 'Paused from form' });
+      } else {
+        // Start the work order
+        await apiClient.startWorkOrder(workOrder.wo_id, { 
+          operator: formData.assignee || undefined,
+          notes: 'Started from form' 
+        });
+      }
+      
+      // Reload work orders to get updated status
+      await loadWorkOrders();
+      
+    } catch (error) {
+      console.error('Error updating work order:', error);
+      alert('Failed to update work order: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
   };
 
-  const handleDone = (index: number) => {
-    setWorkOrders(prev => prev.map((order, i) => 
-      i === index 
-        ? { ...order, isPlaying: false, isPaused: false, status: 'Done' }
-        : order
-    ));
+  const handlePause = async (index: number) => {
+    const workOrder = workOrders[index];
+    if (!workOrder.wo_id) return;
+    
+    try {
+      const { apiClient } = await import('../services/apiClient');
+      await apiClient.pauseWorkOrder(workOrder.wo_id, { notes: 'Paused from form' });
+      await loadWorkOrders();
+    } catch (error) {
+      console.error('Error pausing work order:', error);
+      alert('Failed to pause work order: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
+  };
+
+  const handleDone = async (index: number) => {
+    const workOrder = workOrders[index];
+    if (!workOrder.wo_id) return;
+    
+    try {
+      const { apiClient } = await import('../services/apiClient');
+      await apiClient.completeWorkOrder(workOrder.wo_id, { 
+        notes: 'Completed from form',
+        actual_duration: workOrder.actual_duration_minutes || undefined
+      });
+      await loadWorkOrders();
+      
+      // Check if all work orders are completed to auto-transition MO
+      const updatedMO = await apiClient.getManufacturingOrder(moId!);
+      const allCompleted = updatedMO.work_orders?.every(wo => wo.status === 'COMPLETED');
+      
+      if (allCompleted) {
+        if (updatedMO.status === 'CONFIRMED') {
+          // First completion - transition to IN_PROGRESS
+          setFormData(prev => ({ ...prev, state: 'In-Progress' }));
+        } else if (updatedMO.status === 'IN_PROGRESS') {
+          // All work orders complete - complete the MO with inventory processing
+          await apiClient.completeManufacturingOrder(moId!, { 
+            notes: 'All work orders completed - auto-completion with inventory processing' 
+          });
+          setFormData(prev => ({ ...prev, state: 'Completed' }));
+          alert('Manufacturing Order completed successfully! Components consumed and finished goods produced.');
+        }
+      }
+      
+    } catch (error) {
+      console.error('Error completing work order:', error);
+      alert('Failed to complete work order: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
+  };
+
+  const handleCompleteMO = async () => {
+    if (!moId || formData.state !== 'In-Progress') {
+      alert('Only in-progress manufacturing orders can be completed');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const { apiClient } = await import('../services/apiClient');
+      
+      // Check if all work orders are completed
+      const mo = await apiClient.getManufacturingOrder(moId);
+      const pendingWorkOrders = mo.work_orders?.filter(wo => 
+        wo.status !== 'COMPLETED' && wo.status !== 'CANCELED'
+      );
+      
+      if (pendingWorkOrders && pendingWorkOrders.length > 0) {
+        alert('All work orders must be completed before closing the Manufacturing Order');
+        setSaving(false);
+        return;
+      }
+
+      // Complete the MO with inventory processing
+      await apiClient.completeManufacturingOrder(moId, { 
+        notes: 'Manually completed with inventory processing' 
+      });
+      
+      setFormData(prev => ({ ...prev, state: 'Completed' }));
+      alert('Manufacturing Order completed successfully! Components consumed and finished goods produced.');
+      
+    } catch (error) {
+      console.error('Error completing MO:', error);
+      alert('Failed to complete Manufacturing Order: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setSaving(false);
+    }
   };
 
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleInputChange = async (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+    
+    // Auto-populate BOM data when BOM is selected
+    if (name === 'billOfMaterials' && value && formData.state === 'Draft') {
+      // Small delay to ensure formData is updated
+      setTimeout(() => {
+        populateFromBOMWithValue(value);
+      }, 100);
+    }
+  };
+
+  const populateFromBOMWithValue = async (bomId: string) => {
+    if (!bomId) return;
+
+    try {
+      const { apiClient } = await import('../services/apiClient');
+      const bomDetails = await apiClient.getBOM(bomId);
+      
+      // Convert BOM components to our components format
+      const bomComponents = bomDetails.components.map(comp => ({
+        productId: comp.component,
+        name: comp.component_name,
+        availability: '0',
+        toConsume: comp.quantity,
+        units: comp.unit_of_measure || 'units'
+      }));
+
+      setComponents(bomComponents);
+      
+      // Convert BOM operations to work orders preview
+      if (bomDetails.operations) {
+        const quantity = parseInt(formData.quantity || '1');
+        const previewWorkOrders = bomDetails.operations.map(operation => ({
+          wo_id: '',
+          operation: `${operation.sequence}. ${operation.name}`,
+          workCenter: operation.work_center_name,
+          duration: formatDuration(operation.duration_minutes * quantity),
+          realDuration: '00:00',
+          status: 'Preview',
+          isPlaying: false,
+          isPaused: false,
+          operator: null as string | null,
+          operator_name: null as string | null,
+          actual_duration_minutes: 0
+        }));
+        setWorkOrders(previewWorkOrders);
+      }
+      
+      // Update availability from raw materials
+      bomComponents.forEach((component, index) => {
+        const rawMaterial = rawMaterials.find(rm => rm.product_id === component.productId);
+        if (rawMaterial) {
+          setComponents(prev => {
+            const updated = [...prev];
+            updated[index] = {
+              ...updated[index],
+              availability: rawMaterial.current_stock.toString(),
+              units: rawMaterial.unit_of_measure
+            };
+            return updated;
+          });
+        }
+      });
+
+    } catch (error) {
+      console.error('Error auto-populating BOM:', error);
+    }
   };
 
   const handleComponentChange = (index: number, field: string, value: string) => {
@@ -204,10 +401,27 @@ export const ManufacturingOrderForm: React.FC = () => {
   };
 
   const handleConfirm = async () => {
-    // First save the MO, then confirm it
-    await handleSave();
-    if (!saving) { // Only proceed if save was successful
+    if (!moId) {
+      // First save the MO, then confirm it
+      await handleSave();
+      return;
+    }
+    
+    setSaving(true);
+    try {
+      const { apiClient } = await import('../services/apiClient');
+      await apiClient.confirmManufacturingOrder(moId);
       setFormData(prev => ({ ...prev, state: 'Confirmed' }));
+      
+      // Load work orders after confirmation
+      await loadWorkOrders();
+      
+      alert('Manufacturing Order confirmed successfully!');
+    } catch (error) {
+      console.error('Error confirming MO:', error);
+      alert('Failed to confirm Manufacturing Order: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -273,8 +487,20 @@ export const ManufacturingOrderForm: React.FC = () => {
       } else {
         result = await createManufacturingOrder(manufacturingOrderData);
         console.log('MO created successfully:', result);
-        alert('Manufacturing Order created successfully!');
-        setIsEditMode(true); // Switch to edit mode after creation
+        
+        // Auto-confirm the MO after creation
+        if (result?.mo_id) {
+          const { apiClient } = await import('../services/apiClient');
+          await apiClient.confirmManufacturingOrder(result.mo_id);
+          setFormData(prev => ({ ...prev, state: 'Confirmed' }));
+          alert('Manufacturing Order created and confirmed successfully!');
+          setIsEditMode(true);
+          // Stay on the form to show work orders
+          return;
+        } else {
+          alert('Manufacturing Order created successfully!');
+          setIsEditMode(true);
+        }
       }
       
       navigate('/');
@@ -311,13 +537,18 @@ export const ManufacturingOrderForm: React.FC = () => {
         // Load component requirements if available
         if (mo.component_requirements && mo.component_requirements.length > 0) {
           const loadedComponents = mo.component_requirements.map(comp => ({
-            productId: comp.component_id,
+            productId: comp.component,
             name: comp.component_name,
             availability: comp.available_stock.toString(),
-            toConsume: comp.total_required.toString(),
+            toConsume: comp.required_quantity.toString(),
             units: 'units' // Default unit, would need to be fetched from product
           }));
           setComponents(loadedComponents);
+        }
+        
+        // Load work orders if MO is confirmed or later
+        if (mo.status !== 'DRAFT') {
+          await loadWorkOrders();
         }
         
       } catch (error) {
@@ -391,6 +622,15 @@ export const ManufacturingOrderForm: React.FC = () => {
                 </div>
               ) : (
                 <div className="flex gap-3">
+                  {formData.state === 'In-Progress' && (
+                    <button 
+                      onClick={handleCompleteMO}
+                      disabled={saving}
+                      className="bg-green-600 text-white px-6 py-2 rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {saving ? 'Completing...' : 'Complete MO & Process Inventory'}
+                    </button>
+                  )}
                   <button 
                     onClick={handleSave}
                     disabled={saving}
@@ -553,13 +793,25 @@ export const ManufacturingOrderForm: React.FC = () => {
                 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Assignee</label>
-                  <input
-                    type="text"
-                    name="assignee"
-                    value={formData.assignee}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded focus:border-black focus:outline-none"
-                  />
+                  {operatorsLoading ? (
+                    <div className="w-full px-3 py-2 border border-gray-300 rounded bg-gray-50">
+                      Loading operators...
+                    </div>
+                  ) : (
+                    <select
+                      name="assignee"
+                      value={formData.assignee}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded focus:border-black focus:outline-none"
+                    >
+                      <option value="">Select an operator</option>
+                      {operators && Array.isArray(operators) && operators.map((operator) => (
+                        <option key={operator.id} value={operator.id}>
+                          {operator.display_name || operator.username} ({operator.email})
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
               </div>
             </div>
@@ -692,9 +944,44 @@ export const ManufacturingOrderForm: React.FC = () => {
                 <div>
                   <h3 className="text-lg font-semibold mb-4">Work Orders</h3>
                   {formData.state === 'Draft' ? (
-                    <div className="border border-gray-300 rounded p-4 bg-gray-50">
-                      <p className="text-gray-600 text-sm">Work orders will be generated based on the selected Bill of Materials</p>
-                    </div>
+                    workOrders.length > 0 && workOrders[0].status === 'Preview' ? (
+                      <div>
+                        <p className="text-sm text-blue-600 mb-3">Preview: Work orders will be created when MO is confirmed</p>
+                        <div className="border border-gray-300 rounded overflow-hidden">
+                          <table className="w-full">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th className="text-left p-3 text-sm font-medium text-gray-700">Operations</th>
+                                <th className="text-left p-3 text-sm font-medium text-gray-700">Work Center</th>
+                                <th className="text-left p-3 text-sm font-medium text-gray-700">Est. Duration</th>
+                                <th className="text-left p-3 text-sm font-medium text-gray-700">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {workOrders.map((workOrder, index) => (
+                                <tr key={index} className="border-t border-gray-200">
+                                  <td className="p-3 text-sm">{workOrder.operation}</td>
+                                  <td className="p-3 text-sm">{workOrder.workCenter}</td>
+                                  <td className="p-3 text-sm">{workOrder.duration}</td>
+                                  <td className="p-3 text-sm">
+                                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-700">
+                                      Preview
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="border border-gray-300 rounded p-4 bg-gray-50">
+                        <p className="text-gray-600 text-sm">Work orders will be generated based on the selected Bill of Materials</p>
+                        {formData.billOfMaterials && (
+                          <p className="text-sm text-blue-600 mt-2">Select a BOM to see work order preview</p>
+                        )}
+                      </div>
+                    )
                   ) : (
                     <div className="border border-gray-300 rounded overflow-hidden">
                       <table className="w-full">

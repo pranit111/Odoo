@@ -18,4 +18,7 @@ urlpatterns = [
     # User profile
     path('profile/', views.user_profile, name='profile'),
     path('profile/update/', views.update_profile, name='update_profile'),
+    
+    # Operators for assignee dropdown
+    path('operators/', views.get_operators, name='operators'),
 ]

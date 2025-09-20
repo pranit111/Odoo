@@ -41,14 +41,14 @@ class ManufacturingOrderSerializer(serializers.ModelSerializer):
     
     product_name = serializers.CharField(source='product.name', read_only=True)
     bom_name = serializers.CharField(source='bom.name', read_only=True)
-    assignee_name = serializers.CharField(source='assignee.username', read_only=True)
+    assignee_name = serializers.SerializerMethodField()
     created_by_name = serializers.CharField(source='created_by.username', read_only=True)
     
     work_orders = WorkOrderSerializer(many=True, read_only=True)
     progress_percentage = serializers.FloatField(source='get_progress_percentage', read_only=True)
     total_estimated_cost = serializers.FloatField(source='get_total_estimated_cost', read_only=True)
     component_availability_check = serializers.BooleanField(source='check_component_availability', read_only=True)
-    can_start = serializers.BooleanField(source='can_start', read_only=True)
+    can_start = serializers.SerializerMethodField()
     
     class Meta:
         model = ManufacturingOrder
@@ -70,12 +70,20 @@ class ManufacturingOrderSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data['created_by'] = self.context['request'].user
         return super().create(validated_data)
+    
+    def get_assignee_name(self, obj):
+        """Return assignee username or None if not assigned"""
+        return obj.assignee.username if obj.assignee else None
+    
+    def get_can_start(self, obj):
+        """Return whether the MO can be started"""
+        return obj.can_start()
 
 class ManufacturingOrderListSerializer(serializers.ModelSerializer):
     """Simplified serializer for MO lists"""
     
     product_name = serializers.CharField(source='product.name', read_only=True)
-    assignee_name = serializers.CharField(source='assignee.username', read_only=True)
+    assignee_name = serializers.SerializerMethodField()
     progress_percentage = serializers.FloatField(source='get_progress_percentage', read_only=True)
     work_order_count = serializers.SerializerMethodField()
     
@@ -89,6 +97,10 @@ class ManufacturingOrderListSerializer(serializers.ModelSerializer):
     
     def get_work_order_count(self, obj):
         return obj.work_orders.count()
+    
+    def get_assignee_name(self, obj):
+        """Return assignee username or None if not assigned"""
+        return obj.assignee.username if obj.assignee else None
 
 class ManufacturingOrderCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating Manufacturing Orders"""

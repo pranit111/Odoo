@@ -181,3 +181,37 @@ def logout_user(request):
         return Response({
             'error': 'Invalid token.'
         }, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_operators(request):
+    """
+    Get all users with OPERATOR role for assignee dropdown
+    """
+    try:
+        operators = CustomUser.objects.filter(
+            role='OPERATOR',
+            is_active=True
+        ).values('id', 'username', 'first_name', 'last_name', 'email').order_by('username')
+        
+        # Format the response to include display name
+        operator_list = []
+        for operator in operators:
+            display_name = f"{operator['first_name']} {operator['last_name']}".strip()
+            if not display_name:
+                display_name = operator['username']
+                
+            operator_list.append({
+                'id': operator['id'],
+                'username': operator['username'],
+                'display_name': display_name,
+                'email': operator['email']
+            })
+        
+        return Response(operator_list, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Error fetching operators: {str(e)}")
+        return Response({
+            'error': 'Failed to fetch operators.'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

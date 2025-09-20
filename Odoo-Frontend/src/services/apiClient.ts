@@ -1,5 +1,15 @@
 import { AuthService } from './auth';
 
+// User interface for API responses
+export interface User {
+  id: number;
+  username: string;
+  email: string;
+  display_name?: string;
+  role: 'ADMIN' | 'MANAGER' | 'OPERATOR';
+  is_verified: boolean;
+}
+
 // Types for API responses
 export interface Product {
   product_id: string;
@@ -247,6 +257,14 @@ export interface CreateBOMComponentData {
   component: string;
   quantity: string;
   unit_of_measure?: string;
+  notes?: string;
+}
+
+export interface CreateStockLedgerData {
+  product: string;
+  quantity_change: string;
+  movement_type: 'MANUAL_ADJUSTMENT' | 'STOCK_ADJUSTMENT';
+  reference_number?: string;
   notes?: string;
 }
 
@@ -797,6 +815,14 @@ export class ApiClient {
     return this.handleResponse<StockLedgerEntry[]>(response);
   }
 
+  async createStockLedger(data: CreateStockLedgerData): Promise<StockLedgerEntry> {
+    const response = await this.makeRequest('/stock-ledger/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return this.handleResponse<StockLedgerEntry>(response);
+  }
+
   // Stock Adjustments API
   async getStockAdjustments(params?: {
     search?: string;
@@ -948,6 +974,12 @@ export class ApiClient {
   async getProductionAnalysis(days: number = 30): Promise<any> {
     const response = await this.makeRequest(`/inventory-reports/production_analysis/?days=${days}`);
     return this.handleResponse<any>(response);
+  }
+
+  // User Management API
+  async getOperators(): Promise<User[]> {
+    const response = await this.makeRequest('/auth/operators/');
+    return this.handleResponse<User[]>(response);
   }
 }
 

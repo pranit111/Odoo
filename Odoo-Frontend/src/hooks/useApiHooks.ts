@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { 
   apiClient,
   Product,
+  User,
   WorkCenter,
   BOM,
   ManufacturingOrder,
@@ -280,6 +281,39 @@ export function useRawMaterials(autoFetch: boolean = true) {
   return {
     ...state,
     refetch: fetchRawMaterials,
+  };
+}
+
+export function useOperators(autoFetch: boolean = true) {
+  const [state, setState] = useState<UseApiListState<User>>({
+    data: [],
+    loading: false,
+    error: null,
+  });
+
+  const fetchOperators = useCallback(async () => {
+    setState(prev => ({ ...prev, loading: true, error: null }));
+    try {
+      const operators = await apiClient.getOperators();
+      setState(prev => ({ ...prev, data: operators, loading: false }));
+    } catch (error) {
+      setState(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : 'Failed to fetch operators',
+        loading: false,
+      }));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (autoFetch) {
+      fetchOperators();
+    }
+  }, [autoFetch, fetchOperators]);
+
+  return {
+    ...state,
+    refetch: fetchOperators,
   };
 }
 
