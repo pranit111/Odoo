@@ -375,6 +375,16 @@ export class ApiClient {
     return this.handleResponse<Product[]>(response);
   }
 
+  async getFinishedProducts(): Promise<Product[]> {
+    const response = await this.makeRequest('/products/finished_products/');
+    return this.handleResponse<Product[]>(response);
+  }
+
+  async getRawMaterials(): Promise<Product[]> {
+    const response = await this.makeRequest('/products/raw_materials/');
+    return this.handleResponse<Product[]>(response);
+  }
+
   async getProductStockMovements(id: string): Promise<StockLedgerEntry[]> {
     const response = await this.makeRequest(`/products/${id}/stock_movements/`);
     return this.handleResponse<StockLedgerEntry[]>(response);

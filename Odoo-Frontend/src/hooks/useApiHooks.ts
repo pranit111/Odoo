@@ -217,6 +217,72 @@ export function useLowStockProducts(autoFetch: boolean = true) {
   };
 }
 
+export function useFinishedProducts(autoFetch: boolean = true) {
+  const [state, setState] = useState<UseApiListState<Product>>({
+    data: [],
+    loading: false,
+    error: null,
+  });
+
+  const fetchFinishedProducts = useCallback(async () => {
+    setState(prev => ({ ...prev, loading: true, error: null }));
+    try {
+      const products = await apiClient.getFinishedProducts();
+      setState(prev => ({ ...prev, data: products, loading: false }));
+    } catch (error) {
+      setState(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : 'Failed to fetch finished products',
+        loading: false,
+      }));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (autoFetch) {
+      fetchFinishedProducts();
+    }
+  }, [autoFetch, fetchFinishedProducts]);
+
+  return {
+    ...state,
+    refetch: fetchFinishedProducts,
+  };
+}
+
+export function useRawMaterials(autoFetch: boolean = true) {
+  const [state, setState] = useState<UseApiListState<Product>>({
+    data: [],
+    loading: false,
+    error: null,
+  });
+
+  const fetchRawMaterials = useCallback(async () => {
+    setState(prev => ({ ...prev, loading: true, error: null }));
+    try {
+      const products = await apiClient.getRawMaterials();
+      setState(prev => ({ ...prev, data: products, loading: false }));
+    } catch (error) {
+      setState(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : 'Failed to fetch raw materials',
+        loading: false,
+      }));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (autoFetch) {
+      fetchRawMaterials();
+    }
+  }, [autoFetch, fetchRawMaterials]);
+
+  return {
+    ...state,
+    refetch: fetchRawMaterials,
+  };
+}
+
 // Work Centers Hooks
 export function useWorkCenters(params?: {
   search?: string;

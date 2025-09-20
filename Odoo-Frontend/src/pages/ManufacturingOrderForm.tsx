@@ -1,11 +1,29 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Plus, Play, Square, Pause, Check } from 'lucide-react';
 import { AppLayout } from '../components/AppLayout';
+import { useFinishedProducts, useRawMaterials, useBOMs, useManufacturingOrders } from '../hooks/useApiHooks';
 
 export const ManufacturingOrderForm: React.FC = () => {
   const navigate = useNavigate();
+  const { id: moId } = useParams();
+  const { data: finishedProducts, loading: finishedProductsLoading } = useFinishedProducts();
+  const { data: rawMaterials, loading: rawMaterialsLoading, refetch: refetchRawMaterials } = useRawMaterials();
+  const { data: boms, loading: bomsLoading } = useBOMs({ is_active: true });
+  const { createManufacturingOrder, updateManufacturingOrder } = useManufacturingOrders({ autoFetch: false });
   const [activeTab, setActiveTab] = useState<'components' | 'workOrders'>('components');
+  const [showAddProductModal, setShowAddProductModal] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(!!moId);
+  const [newProductData, setNewProductData] = useState({
+    name: '',
+    sku: '',
+    unit_of_measure: 'units',
+    unit_cost: '',
+    current_stock: '',
+    minimum_stock: ''
+  });
   const [formData, setFormData] = useState({
     moNumber: 'MO-000001',
     finishedProduct: '',
@@ -18,7 +36,7 @@ export const ManufacturingOrderForm: React.FC = () => {
   });
 
   const [components, setComponents] = useState([
-    { name: '', availability: '', toConsume: '', units: '' }
+    { productId: '', name: '', availability: '', toConsume: '', units: '' }
   ]);
 
   const [workOrders, setWorkOrders] = useState([
@@ -69,30 +87,250 @@ export const ManufacturingOrderForm: React.FC = () => {
     setComponents(updatedComponents);
   };
 
-  const addComponent = () => {
-    setComponents([...components, { name: '', availability: '', toConsume: '', units: '' }]);
+  const handleProductSelect = (index: number, productId: string) => {
+    if (productId === 'new') {
+      setShowAddProductModal(true);
+      return;
+    }
+    
+    const selectedProduct = rawMaterials.find(p => p.product_id === productId);
+    if (selectedProduct) {
+      const updatedComponents = [...components];
+      updatedComponents[index] = {
+        ...updatedComponents[index],
+        productId: productId,
+        name: selectedProduct.name,
+        availability: selectedProduct.current_stock.toString(),
+        units: selectedProduct.unit_of_measure
+      };
+      setComponents(updatedComponents);
+    }
   };
 
-  const populateFromBOM = () => {
-    // Simulate populating from Bill of Materials
-    setComponents([
-      { name: 'Wood Panel', availability: '50', toConsume: '2', units: 'Pieces' },
-      { name: 'Screws', availability: '100', toConsume: '8', units: 'Units' },
-      { name: 'Hinges', availability: '20', toConsume: '2', units: 'Units' }
-    ]);
+  const handleNewProductChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setNewProductData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleCreateProduct = async () => {
+    try {
+      // Import apiClient and create the product
+      const { apiClient } = await import('../services/apiClient');
+      const productData = {
+        name: newProductData.name,
+        sku: newProductData.sku,
+        product_type: 'RAW_MATERIAL' as const,
+        unit_of_measure: newProductData.unit_of_measure,
+        unit_cost: newProductData.unit_cost,
+        current_stock: newProductData.current_stock,
+        minimum_stock: newProductData.minimum_stock,
+        is_active: true
+      };
+      
+      await apiClient.createProduct(productData);
+      
+      // Reset form and close modal
+      setNewProductData({
+        name: '',
+        sku: '',
+        unit_of_measure: 'units',
+        unit_cost: '',
+        current_stock: '',
+        minimum_stock: ''
+      });
+      setShowAddProductModal(false);
+      
+      // Refresh raw materials list
+      refetchRawMaterials();
+      
+      alert('Product created successfully!');
+    } catch (error) {
+      alert('Failed to create product: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
+  };
+
+  const addComponent = () => {
+    setComponents([...components, { productId: '', name: '', availability: '', toConsume: '', units: '' }]);
+  };
+
+  const populateFromBOM = async () => {
+    if (!formData.billOfMaterials) {
+      alert('Please select a Bill of Material first.');
+      return;
+    }
+
+    try {
+      // Import apiClient and fetch BOM details
+      const { apiClient } = await import('../services/apiClient');
+      const bomDetails = await apiClient.getBOM(formData.billOfMaterials);
+      
+      // Convert BOM components to our components format
+      const bomComponents = bomDetails.components.map(comp => ({
+        productId: comp.component,
+        name: comp.component_name,
+        availability: '0', // We'll need to lookup actual stock
+        toConsume: comp.quantity,
+        units: comp.unit_of_measure || 'units'
+      }));
+
+      // Update the components state
+      setComponents(bomComponents);
+      
+      // Optionally update availability by looking up raw materials
+      bomComponents.forEach((component, index) => {
+        const rawMaterial = rawMaterials.find(rm => rm.product_id === component.productId);
+        if (rawMaterial) {
+          setComponents(prev => {
+            const updated = [...prev];
+            updated[index] = {
+              ...updated[index],
+              availability: rawMaterial.current_stock.toString(),
+              units: rawMaterial.unit_of_measure
+            };
+            return updated;
+          });
+        }
+      });
+
+      console.log('BOM components populated:', bomComponents);
+    } catch (error) {
+      console.error('Error fetching BOM details:', error);
+      alert('Failed to populate components from BOM: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
   };
 
   const handleStateChange = (newState: string) => {
     setFormData(prev => ({ ...prev, state: newState }));
   };
 
-  const handleConfirm = () => {
-    setFormData(prev => ({ ...prev, state: 'Confirmed' }));
+  const handleConfirm = async () => {
+    // First save the MO, then confirm it
+    await handleSave();
+    if (!saving) { // Only proceed if save was successful
+      setFormData(prev => ({ ...prev, state: 'Confirmed' }));
+    }
+  };
+
+  const handleCancel = () => {
+    const hasUnsavedChanges = formData.finishedProduct || formData.quantity || formData.scheduleDate || components.some(c => c.productId);
+    
+    if (hasUnsavedChanges) {
+      const confirmLeave = window.confirm('You have unsaved changes. Are you sure you want to cancel?');
+      if (!confirmLeave) return;
+    }
+    
+    navigate('/');
   };
 
   const handleBack = () => {
     navigate('/');
   };
+
+  const handleSave = async () => {
+    // Validate required fields
+    if (!formData.finishedProduct) {
+      alert('Please select a finished product');
+      return;
+    }
+    
+    if (!formData.quantity || parseFloat(formData.quantity) <= 0) {
+      alert('Please enter a valid quantity');
+      return;
+    }
+    
+    if (!formData.scheduleDate) {
+      alert('Please select a schedule date');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      // Map form data to API format
+      const manufacturingOrderData = {
+        product: formData.finishedProduct,
+        quantity_to_produce: parseFloat(formData.quantity),
+        priority: 'MEDIUM' as const, // Default priority
+        scheduled_start_date: formData.scheduleDate,
+        notes: `${isEditMode ? 'Updated' : 'Created'} via form. Components: ${components.length} items`
+      } as any; // Type assertion to handle optional fields
+      
+      // Add optional fields if they exist
+      if (formData.billOfMaterials) {
+        manufacturingOrderData.bom = formData.billOfMaterials;
+      }
+      
+      if (formData.assignee) {
+        manufacturingOrderData.assignee = formData.assignee;
+      }
+
+      console.log(`${isEditMode ? 'Updating' : 'Creating'} MO with data:`, manufacturingOrderData);
+      
+      let result;
+      if (isEditMode && moId) {
+        result = await updateManufacturingOrder(moId, manufacturingOrderData);
+        console.log('MO updated successfully:', result);
+        alert('Manufacturing Order updated successfully!');
+      } else {
+        result = await createManufacturingOrder(manufacturingOrderData);
+        console.log('MO created successfully:', result);
+        alert('Manufacturing Order created successfully!');
+        setIsEditMode(true); // Switch to edit mode after creation
+      }
+      
+      navigate('/');
+    } catch (error) {
+      console.error(`Error ${isEditMode ? 'updating' : 'creating'} MO:`, error);
+      alert(`Failed to ${isEditMode ? 'update' : 'create'} Manufacturing Order: ` + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Load existing MO data when in edit mode
+  useEffect(() => {
+    const loadExistingMO = async () => {
+      if (!moId) return;
+      
+      setLoading(true);
+      try {
+        const { apiClient } = await import('../services/apiClient');
+        const mo = await apiClient.getManufacturingOrder(moId);
+        
+        // Populate form data from existing MO
+        setFormData(prev => ({
+          ...prev,
+          moNumber: mo.mo_number,
+          finishedProduct: mo.product,
+          quantity: mo.quantity_to_produce.toString(),
+          billOfMaterials: mo.bom || '',
+          scheduleDate: mo.scheduled_start_date.split('T')[0], // Convert to date format
+          assignee: mo.assignee || '',
+          state: mo.status === 'DRAFT' ? 'Draft' : 'Confirmed'
+        }));
+        
+        // Load component requirements if available
+        if (mo.component_requirements && mo.component_requirements.length > 0) {
+          const loadedComponents = mo.component_requirements.map(comp => ({
+            productId: comp.component_id,
+            name: comp.component_name,
+            availability: comp.available_stock.toString(),
+            toConsume: comp.total_required.toString(),
+            units: 'units' // Default unit, would need to be fetched from product
+          }));
+          setComponents(loadedComponents);
+        }
+        
+      } catch (error) {
+        console.error('Error loading MO:', error);
+        alert('Failed to load Manufacturing Order data');
+        navigate('/');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadExistingMO();
+  }, [moId, navigate]);
 
   return (
     <AppLayout title="Manufacturing Order">
@@ -129,22 +367,44 @@ export const ManufacturingOrderForm: React.FC = () => {
             <div className="flex items-center justify-between mb-4">
               {/* Action Buttons based on state - moved to left */}
               {formData.state === 'Draft' ? (
-                <div className="flex gap-2">
+                <div className="flex gap-3">
                   <button 
                     onClick={handleConfirm}
-                    className="bg-black text-white px-6 py-2 rounded hover:bg-gray-800 transition-colors"
+                    disabled={saving}
+                    className="bg-black text-white px-6 py-2 rounded-md hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Confirm
+                    {saving ? 'Saving & Confirming...' : 'Save & Confirm'}
                   </button>
                   <button 
-                    onClick={handleBack}
-                    className="bg-gray-200 text-gray-700 px-6 py-2 rounded hover:bg-gray-300 transition-colors"
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="border border-gray-300 text-gray-700 px-6 py-2 rounded-md hover:bg-gray-50 transition-colors disabled:opacity-50"
                   >
-                    Back
+                    {saving ? 'Saving...' : 'Save Draft'}
+                  </button>
+                  <button 
+                    onClick={handleCancel}
+                    className="border border-red-300 text-red-600 px-6 py-2 rounded-md hover:bg-red-50 transition-colors"
+                  >
+                    Cancel
                   </button>
                 </div>
               ) : (
-                <div></div>
+                <div className="flex gap-3">
+                  <button 
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="bg-black text-white px-6 py-2 rounded-md hover:bg-gray-800 transition-colors disabled:opacity-50"
+                  >
+                    {saving ? 'Updating...' : 'Update'}
+                  </button>
+                  <button 
+                    onClick={handleCancel}
+                    className="border border-gray-300 text-gray-700 px-6 py-2 rounded-md hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel Changes
+                  </button>
+                </div>
               )}
               
               <div className="flex gap-2">
@@ -211,14 +471,23 @@ export const ManufacturingOrderForm: React.FC = () => {
                 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Finished product *</label>
-                  <input
-                    type="text"
+                  <select
                     name="finishedProduct"
                     value={formData.finishedProduct}
                     onChange={handleInputChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded focus:border-black focus:outline-none"
-                    placeholder="Select finished product..."
-                  />
+                    disabled={finishedProductsLoading}
+                  >
+                    <option value="">Select finished product...</option>
+                    {finishedProducts.map((product) => (
+                      <option key={product.product_id} value={product.product_id}>
+                        {product.name} ({product.sku})
+                      </option>
+                    ))}
+                  </select>
+                  {finishedProductsLoading && (
+                    <p className="text-xs text-gray-500 mt-1">Loading products...</p>
+                  )}
                 </div>
                 
                 <div className="grid grid-cols-2 gap-2">
@@ -249,13 +518,23 @@ export const ManufacturingOrderForm: React.FC = () => {
                 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Bill of Material</label>
-                  <input
-                    type="text"
+                  <select
                     name="billOfMaterials"
                     value={formData.billOfMaterials}
                     onChange={handleInputChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded focus:border-black focus:outline-none"
-                  />
+                    disabled={bomsLoading}
+                  >
+                    <option value="">Select Bill of Material...</option>
+                    {boms.map((bom) => (
+                      <option key={bom.bom_id} value={bom.bom_id}>
+                        {bom.name} (v{bom.version}) - {bom.product_name}
+                      </option>
+                    ))}
+                  </select>
+                  {bomsLoading && (
+                    <p className="text-xs text-gray-500 mt-1">Loading BOMs...</p>
+                  )}
                 </div>
               </div>
 
@@ -343,13 +622,25 @@ export const ManufacturingOrderForm: React.FC = () => {
                         {components.map((component, index) => (
                           <tr key={index} className="border-t border-gray-200">
                             <td className="p-3">
-                              <input
-                                type="text"
-                                value={component.name}
-                                onChange={(e) => handleComponentChange(index, 'name', e.target.value)}
+                              <select
+                                value={component.productId}
+                                onChange={(e) => handleProductSelect(index, e.target.value)}
                                 className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
-                                placeholder="Add a product"
-                              />
+                                disabled={rawMaterialsLoading}
+                              >
+                                <option value="">Select raw material...</option>
+                                {rawMaterials.map((material) => (
+                                  <option key={material.product_id} value={material.product_id}>
+                                    {material.name} ({material.sku}) - Stock: {material.current_stock}
+                                  </option>
+                                ))}
+                                <option value="new" className="font-semibold text-blue-600">
+                                  ➕ Add New Product
+                                </option>
+                              </select>
+                              {rawMaterialsLoading && (
+                                <p className="text-xs text-gray-500 mt-1">Loading materials...</p>
+                              )}
                             </td>
                             <td className="p-3">
                               <input
@@ -507,6 +798,109 @@ export const ManufacturingOrderForm: React.FC = () => {
 
         </div>
       </div>
+
+      {/* Add New Product Modal */}
+      {showAddProductModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-96 max-w-md">
+            <h3 className="text-lg font-semibold mb-4">Add New Raw Material</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Product Name *</label>
+                <input
+                  type="text"
+                  name="name"
+                  value={newProductData.name}
+                  onChange={handleNewProductChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:border-black focus:outline-none"
+                  placeholder="Enter product name"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">SKU *</label>
+                <input
+                  type="text"
+                  name="sku"
+                  value={newProductData.sku}
+                  onChange={handleNewProductChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:border-black focus:outline-none"
+                  placeholder="Enter SKU"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Unit Cost</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    name="unit_cost"
+                    value={newProductData.unit_cost}
+                    onChange={handleNewProductChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded focus:border-black focus:outline-none"
+                    placeholder="0.00"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Unit of Measure</label>
+                  <select
+                    name="unit_of_measure"
+                    value={newProductData.unit_of_measure}
+                    onChange={handleNewProductChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded focus:border-black focus:outline-none"
+                  >
+                    <option value="units">Units</option>
+                    <option value="kg">Kilograms</option>
+                    <option value="meters">Meters</option>
+                    <option value="liters">Liters</option>
+                    <option value="pieces">Pieces</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Current Stock</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    name="current_stock"
+                    value={newProductData.current_stock}
+                    onChange={handleNewProductChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded focus:border-black focus:outline-none"
+                    placeholder="0.00"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Minimum Stock</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    name="minimum_stock"
+                    value={newProductData.minimum_stock}
+                    onChange={handleNewProductChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded focus:border-black focus:outline-none"
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => setShowAddProductModal(false)}
+                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateProduct}
+                className="px-4 py-2 bg-black text-white rounded-md hover:bg-gray-800 transition-colors"
+                disabled={!newProductData.name || !newProductData.sku}
+              >
+                Create Product
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppLayout>
   );
 };

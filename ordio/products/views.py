@@ -96,6 +96,32 @@ class ProductViewSet(viewsets.ModelViewSet):
         serializer = ProductListSerializer(out_of_stock, many=True)
         return Response(serializer.data)
     
+    @action(detail=False, methods=['get'])
+    def finished_products(self, request):
+        """
+        Get all finished products
+        GET /api/products/finished_products/
+        """
+        finished_products = Product.objects.filter(
+            product_type='FINISHED_GOOD',
+            is_active=True
+        ).order_by('name')
+        serializer = ProductListSerializer(finished_products, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def raw_materials(self, request):
+        """
+        Get all raw materials
+        GET /api/products/raw_materials/
+        """
+        raw_materials = Product.objects.filter(
+            product_type='RAW_MATERIAL',
+            is_active=True
+        ).order_by('name')
+        serializer = ProductListSerializer(raw_materials, many=True)
+        return Response(serializer.data)
+    
     @action(detail=True, methods=['get'])
     def stock_movements(self, request, pk=None):
         """
