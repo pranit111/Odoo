@@ -41,7 +41,14 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
     'corsheaders',
+    
+    # Manufacturing apps
     'user_auth',
+    'products',
+    'workcenters',
+    'bom',
+    'manufacturing',
+    'inventory',
 ]
 
 MIDDLEWARE = [

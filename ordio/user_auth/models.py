@@ -6,9 +6,16 @@ import string
 
 class CustomUser(AbstractUser):
     """
-    Custom User model with OTP functionality
+    Custom User model with OTP functionality and manufacturing roles
     """
+    ROLE_CHOICES = [
+        ('ADMIN', 'Administrator'),
+        ('MANAGER', 'Manufacturing Manager'),
+        ('OPERATOR', 'Shop Floor Operator'),
+    ]
+    
     email = models.EmailField(unique=True)
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='OPERATOR')
     is_verified = models.BooleanField(default=False)
     
     # OTP fields
