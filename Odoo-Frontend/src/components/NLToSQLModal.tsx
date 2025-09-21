@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { Database, X } from 'lucide-react';
-import { Sidebar } from './Sidebar';
+import { X } from 'lucide-react';
 import NLToSQL from '../pages/NLToSQL';
 
 const NLToSQLModal: React.FC = () => {
@@ -11,13 +10,13 @@ const NLToSQLModal: React.FC = () => {
 
   return (
     <>
-      {/* Floating Icon */}
+      {/* Smart Query Button */}
       <button
         onClick={openModal}
-        className="fixed bottom-6 right-6 bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-full shadow-lg transition-all duration-300 hover:scale-110 z-40"
-        title="Open Natural Language SQL Query"
+        className="fixed bottom-6 right-6 bg-black hover:bg-gray-800 text-white px-4 py-3 rounded-md shadow-lg transition-all duration-300 hover:shadow-xl z-40 text-sm font-medium"
+        title="Open Smart Query"
       >
-        <Database className="h-6 w-6" />
+        Smart Query
       </button>
 
       {/* Modal */}
@@ -27,21 +26,18 @@ const NLToSQLModal: React.FC = () => {
             {/* Main Content */}
             <div className="flex-1 flex flex-col">
               {/* Header */}
-              <div className="flex items-center justify-between p-4 border-b bg-white">
-                <div className="flex items-center gap-3">
-                  <Database className="h-6 w-6 text-blue-600" />
-                  <h2 className="text-xl font-semibold text-gray-900">Natural Language to SQL</h2>
-                </div>
+              <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-white">
+                <h2 className="text-xl font-bold text-gray-900">Smart Query</h2>
                 <button
                   onClick={closeModal}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="p-2 hover:bg-gray-100 rounded-md transition-colors"
                 >
                   <X className="h-5 w-5 text-gray-500" />
                 </button>
               </div>
 
               {/* Content */}
-              <div className="flex-1 overflow-y-auto">
+              <div className="flex-1 overflow-y-auto bg-gray-100">
                 <NLToSQL />
               </div>
             </div>

@@ -1,249 +1,412 @@
-# Django REST User Authentication with OTP
+#Demo Video Link :https://drive.google.com/drive/folders/1HMUd5DchYj1mywIQHebKipYOwQ6kvqSW?usp=sharing
 
-This Django REST API provides user authentication using username/password with OTP verification via email.
+# Ordio - Manufacturing ERP System
 
-## Features
+A comprehensive Enterprise Resource Planning (ERP) system built with Django REST Framework backend and React TypeScript frontend, designed specifically for manufacturing operations management.
 
-- User registration with username, email, and password
-- OTP-based account verification via email (using Google Gmail)
-- Username/password login after OTP verification
-- JWT token-based authentication
-- User profile management
+## 🚀 Features
 
-## API Endpoints
+### Core Manufacturing Features
+- *Bill of Materials (BOM) Management* - Create and manage product BOMs with components and quantities
+- *Manufacturing Orders* - Track production orders from planning to completion
+- *Work Centers* - Manage production facilities and resources
+- *Inventory Management* - Real-time stock tracking and movements
+- *Product Catalog* - Comprehensive product database with specifications
+- *Stock Ledger* - Detailed inventory transaction history
 
-### 1. User Registration
-**POST** `/api/auth/register/`
+### Advanced Features
+- *User Authentication & Authorization* - JWT-based secure authentication
+- *Profile Management* - Email/password change with OTP verification
+- *Dashboard Analytics* - KPI tracking and manufacturing insights
+- *Work Orders Analysis* - Production efficiency and performance reports
+- *Natural Language to SQL* - AI-powered data querying interface
+- *Responsive Design* - Mobile-friendly interface with Tailwind CSS
 
-Register a new user account.
+## 🏗 Architecture
 
-**Request Body:**
-```json
-{
-    "username": "john_doe",
-    "email": "john@example.com",
-    "password": "SecurePass123!",
-    "password_confirm": "SecurePass123!"
-}
-```
+### Backend (Django REST Framework)
 
-**Response:**
-```json
-{
-    "message": "User registered successfully. Please verify your account with OTP.",
-    "user_id": 1,
-    "username": "john_doe"
-}
-```
+ordio/
+├── ordio/                 # Main Django project
+├── user_auth/            # Authentication & user management
+├── products/             # Product catalog management
+├── bom/                  # Bill of Materials
+├── manufacturing/        # Manufacturing orders & operations
+├── inventory/            # Stock management
+├── workcenters/          # Work center management
+└── nl_sql/              # Natural Language to SQL AI engine
 
-### 2. Send OTP
-**POST** `/api/auth/send-otp/`
 
-Send OTP to user's registered email address.
+### Frontend (React + TypeScript)
 
-**Request Body:**
-```json
-{
-    "username": "john_doe"
-}
-```
+Odoo-Frontend/
+├── src/
+│   ├── components/       # Reusable UI components
+│   ├── pages/           # Application pages
+│   ├── hooks/           # Custom React hooks
+│   ├── services/        # API client and auth services
+│   └── App.tsx          # Main application component
+├── public/              # Static assets
+└── package.json         # Dependencies and scripts
 
-**Response:**
-```json
-{
-    "message": "OTP sent successfully to your registered email.",
-    "username": "john_doe"
-}
-```
 
-### 3. Verify OTP
-**POST** `/api/auth/verify-otp/`
+## 📋 Prerequisites
 
-Verify OTP and activate user account.
+### Backend Requirements
+- Python 3.8+
+- Django 4.2+
+- PostgreSQL (for production) or SQLite (for development)
 
-**Request Body:**
-```json
-{
-    "username": "john_doe",
-    "otp": "123456"
-}
-```
+### Frontend Requirements
+- Node.js 16+
+- npm or yarn
 
-**Response:**
-```json
-{
-    "message": "OTP verified successfully. Account activated.",
-    "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
-    "refresh_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
-    "user": {
-        "id": 1,
-        "username": "john_doe",
-        "email": "john@example.com",
-        "first_name": "John",
-        "last_name": "Doe",
-        "is_verified": true,
-        "date_joined": "2025-09-20T10:30:00Z"
-    }
-}
-```
+## ⚙ Installation
 
-### 4. Login
-**POST** `/api/auth/login/`
+### 1. Clone the Repository
+bash
+git clone <repository-url>
+cd Odoo
 
-Login with username and password (only for verified users).
 
-**Request Body:**
-```json
-{
-    "username": "john_doe",
-    "password": "SecurePass123!"
-}
-```
+### 2. Backend Setup
 
-**Response:**
-```json
-{
-    "message": "Login successful.",
-    "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
-    "refresh_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
-    "user": {
-        "id": 1,
-        "username": "john_doe",
-        "email": "john@example.com",
-        "first_name": "John",
-        "last_name": "Doe",
-        "is_verified": true,
-        "date_joined": "2025-09-20T10:30:00Z"
-    }
-}
-```
+#### Navigate to Backend Directory
+bash
+cd ordio
 
-### 5. Get User Profile
-**GET** `/api/auth/profile/`
 
-Get current user's profile (requires authentication).
+#### Create Virtual Environment
+bash
+python -m venv venv
+# On Windows
+venv\Scripts\activate
+# On macOS/Linux
+source venv/bin/activate
 
-**Headers:**
-```
-Authorization: Bearer <access_token>
-```
 
-**Response:**
-```json
-{
-    "id": 1,
-    "username": "john_doe",
-    "email": "john@example.com",
-    "is_verified": true,
-    "date_joined": "2025-09-20T10:30:00Z"
-}
-```
+#### Install Dependencies
+bash
+pip install -r requirements.txt
 
-### 6. Update Profile
-**PUT** `/api/auth/profile/update/`
 
-Update user profile (requires authentication).
-
-**Headers:**
-```
-Authorization: Bearer <access_token>
-```
-
-**Request Body:**
-```json
-{
-    "email": "newemail@example.com"
-}
-```
-
-### 7. Logout
-**POST** `/api/auth/logout/`
-
-Logout user and blacklist refresh token.
-
-**Headers:**
-```
-Authorization: Bearer <access_token>
-```
-
-**Request Body:**
-```json
-{
-    "refresh_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
-}
-```
-
-### 8. Refresh Token
-**POST** `/api/auth/token/refresh/`
-
-Refresh access token using refresh token.
-
-**Request Body:**
-```json
-{
-    "refresh": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
-}
-```
-
-## Setup Instructions
-
-### 1. Environment Configuration
-
-Update the `.env` file with your Google Gmail credentials:
-
-```env
+#### Environment Variables
+Create a .env file in the ordio directory:
+env
+DEBUG=True
+SECRET_KEY=your-secret-key-here
+DATABASE_URL=sqlite:///db.sqlite3
 EMAIL_HOST_USER=your-gmail@gmail.com
-EMAIL_HOST_PASSWORD=your-16-character-app-password
-DEFAULT_FROM_EMAIL=your-gmail@gmail.com
-```
+EMAIL_HOST_PASSWORD=your-app-password
+GEMINI_API_KEY=your-gemini-api-key  # For NL to SQL feature
 
-### 2. Google App Password Setup
 
-1. Go to your Google Account settings
-2. Navigate to Security > 2-Step Verification
-3. Scroll down to "App Passwords"
-4. Generate a password for "Mail" application
-5. Use the 16-character password (no spaces) in `EMAIL_HOST_PASSWORD`
+#### Database Setup
+bash
+# Run migrations
+python manage.py migrate
 
-### 3. Database Migration
+# Create superuser (optional)
+python manage.py createsuperuser
 
-Run the following commands to set up the database:
 
-```bash
+#### Start Backend Server
+bash
+python manage.py runserver
+
+
+The backend will be available at http://localhost:8000
+
+### 3. Frontend Setup
+
+#### Navigate to Frontend Directory
+bash
+cd Odoo-Frontend
+
+
+#### Install Dependencies
+bash
+npm install
+
+
+#### Environment Variables
+Create a .env file in the Odoo-Frontend directory:
+env
+VITE_API_BASE_URL=http://localhost:8000
+
+
+#### Start Development Server
+bash
+npm run dev
+
+
+The frontend will be available at http://localhost:5173
+
+## 🔌 API Endpoints
+
+### Authentication Endpoints
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | /api/auth/register/ | User registration |
+| POST | /api/auth/send-otp/ | Send OTP for verification |
+| POST | /api/auth/verify-otp/ | OTP verification |
+| POST | /api/auth/login/ | User login |
+| POST | /api/auth/logout/ | User logout |
+| GET | /api/auth/profile/ | Get user profile |
+| PUT | /api/auth/profile/ | Update user profile |
+| POST | /api/auth/token/refresh/ | Refresh JWT token |
+
+### Profile Management
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | /api/auth/send-email-change-otp/ | Send OTP for email change |
+| POST | /api/auth/change-email/ | Change user email |
+| POST | /api/auth/send-password-change-otp/ | Send OTP for password change |
+| POST | /api/auth/change-password/ | Change user password |
+
+### Products
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | /api/products/ | List all products |
+| POST | /api/products/ | Create new product |
+| GET | /api/products/{id}/ | Get product details |
+| PUT | /api/products/{id}/ | Update product |
+| DELETE | /api/products/{id}/ | Delete product |
+
+### Bill of Materials (BOM)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | /api/bom/ | List all BOMs |
+| POST | /api/bom/ | Create new BOM |
+| GET | /api/bom/{id}/ | Get BOM details |
+| PUT | /api/bom/{id}/ | Update BOM |
+| DELETE | /api/bom/{id}/ | Delete BOM |
+
+### Manufacturing Orders
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | /api/manufacturing/orders/ | List manufacturing orders |
+| POST | /api/manufacturing/orders/ | Create manufacturing order |
+| GET | /api/manufacturing/orders/{id}/ | Get order details |
+| PUT | /api/manufacturing/orders/{id}/ | Update order |
+| DELETE | /api/manufacturing/orders/{id}/ | Delete order |
+
+### Work Centers
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | /api/workcenters/ | List work centers |
+| POST | /api/workcenters/ | Create work center |
+| GET | /api/workcenters/{id}/ | Get work center details |
+| PUT | /api/workcenters/{id}/ | Update work center |
+| DELETE | /api/workcenters/{id}/ | Delete work center |
+
+### Inventory
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | /api/inventory/ | List inventory items |
+| POST | /api/inventory/ | Create inventory item |
+| GET | /api/inventory/{id}/ | Get inventory details |
+| PUT | /api/inventory/{id}/ | Update inventory |
+| DELETE | /api/inventory/{id}/ | Delete inventory |
+
+### Natural Language to SQL
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | /api/nl-sql/execute/ | Execute natural language query |
+| GET | /api/nl-sql/schema/ | Get database schema |
+
+## 📱 Frontend Features
+
+### Pages
+- *Dashboard* - Manufacturing KPIs and overview
+- *Products* - Product catalog management
+- *Bill of Materials* - BOM creation and management
+- *Manufacturing Orders* - Production order tracking
+- *Work Centers* - Facility management
+- *Inventory* - Stock tracking and management
+- *Stock Ledger* - Inventory transaction history
+- *Reports* - Work orders analysis and reports
+- *Profile Setup* - User profile management
+
+### Components
+- *Responsive Layout* - Sidebar navigation with mobile support
+- *Data Tables* - Sortable and filterable data display
+- *Forms* - Dynamic form components with validation
+- *Modals* - Interactive popup dialogs
+- *Charts* - Data visualization components
+- *Filters* - Advanced filtering capabilities
+
+### Key Features
+- *Protected Routes* - Authentication-based navigation
+- *Real-time Updates* - Live data synchronization
+- *Form Validation* - Client-side and server-side validation
+- *Error Handling* - Comprehensive error management
+- *Loading States* - User-friendly loading indicators
+
+## 🤖 AI Features
+
+### Natural Language to SQL
+The system includes an AI-powered feature that converts natural language queries into SQL and executes them against the database.
+
+#### Features:
+- *Natural Language Processing* - Understands plain English queries
+- *SQL Generation* - Converts queries to safe SQL statements
+- *Security Validation* - Prevents malicious SQL injection
+- *Real-time Execution* - Immediate query results
+- *Schema Awareness* - Understands database structure
+
+#### Example Queries:
+- "Show me the last 10 manufacturing orders"
+- "What products have low stock?"
+- "List all work centers with their capacity"
+- "Show manufacturing orders completed this week"
+
+#### Access:
+- *Floating Icon* - Always accessible via bottom-right chat icon
+- *Modal Interface* - Clean, sidebar-integrated design
+- *Real-time Results* - Instant query execution and display
+
+## 🔐 Security Features
+
+### Authentication
+- *JWT Tokens* - Secure token-based authentication
+- *OTP Verification* - Two-factor authentication for sensitive operations
+- *Password Requirements* - Strong password enforcement (8+ chars, 1 uppercase, 1 number, 1 symbol)
+- *Session Management* - Secure session handling
+
+### API Security
+- *CORS Configuration* - Cross-origin resource sharing
+- *Permission Classes* - Role-based access control
+- *Input Validation* - Request data validation
+- *SQL Injection Prevention* - Safe query execution
+
+## 📊 Database Models
+
+### User Authentication
+- *CustomUser* - Extended user model with OTP support
+- *OTP Management* - Time-based one-time passwords
+
+### Manufacturing
+- *Product* - Product catalog with specifications
+- *BillOfMaterial* - Product composition and recipes
+- *ManufacturingOrder* - Production orders and tracking
+- *WorkCenter* - Production facilities and resources
+
+### Inventory
+- *InventoryItem* - Stock items with locations
+- *StockMovement* - Inventory transaction history
+
+## 🚀 Deployment
+
+### Backend Deployment
+1. Set up production database (PostgreSQL recommended)
+2. Configure environment variables
+3. Run python manage.py collectstatic
+4. Set up web server (Nginx + Gunicorn)
+5. Configure SSL certificates
+
+### Frontend Deployment
+1. Run npm run build
+2. Deploy built files to web server
+3. Configure routing for SPA
+4. Set up CDN (optional)
+
+## 🛠 Development
+
+### Backend Development
+bash
+# Run migrations after model changes
 python manage.py makemigrations
 python manage.py migrate
-python manage.py createsuperuser
-```
 
-### 4. Run the Server
+# Create new app
+python manage.py startapp app_name
 
-```bash
-python manage.py runserver
-```
+# Run tests
+python manage.py test
 
-## Authentication Flow
 
-1. **Register** → User creates account with username, email, and password
-2. **Send OTP** → System sends 6-digit OTP to user's email
-3. **Verify OTP** → User verifies OTP to activate account and receive JWT tokens
-4. **Login** → User can login with username/password (only if verified)
-5. **Access Protected Endpoints** → Use JWT access token in Authorization header
+### Frontend Development
+bash
+# Start development server
+npm run dev
 
-## Security Features
+# Build for production
+npm run build
 
-- Password validation using Django's built-in validators
-- OTP expires after 10 minutes
-- JWT tokens with configurable expiration
-- Refresh token rotation
-- Account must be OTP-verified before login
-- Email uniqueness validation
-- Username uniqueness validation
+# Run linting
+npm run lint
 
-## Error Handling
+# Run type checking
+npm run type-check
 
-The API returns appropriate HTTP status codes and error messages:
 
-- `400 Bad Request` - Invalid data or validation errors
-- `401 Unauthorized` - Invalid credentials or missing authentication
-- `404 Not Found` - User not found
-- `500 Internal Server Error` - Email sending failure or server errors
+## 📝 API Documentation
+
+The API follows REST principles with JSON responses. All authenticated endpoints require a valid JWT token in the Authorization header:
+
+
+Authorization: Bearer <your-jwt-token>
+
+
+### Response Format
+json
+{
+  "data": {},
+  "message": "Success message",
+  "status": "success"
+}
+
+
+### Error Format
+json
+{
+  "error": "Error message",
+  "details": {},
+  "status": "error"
+}
+
+
+## 🔍 Testing
+
+### Backend Testing
+bash
+cd ordio
+python manage.py test
+
+
+### Frontend Testing
+bash
+cd Odoo-Frontend
+npm run test
+
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
+
+## 📄 License
+
+This project is licensed under the MIT License.
+
+## 🆘 Support
+
+For support and questions:
+- Create an issue in the repository
+- Check the API documentation
+- Review the code examples in this README
+
+## 🔄 Version History
+
+- *v1.0.0* - Initial release with core manufacturing features
+- *v1.1.0* - Added profile management and OTP verification
+- *v1.2.0* - Implemented Natural Language to SQL feature
+- *v1.3.0* - Enhanced UI/UX and comprehensive reporting
+
+---
+
+Built with ❤ using Django REST Framework and React TypeScript.
