@@ -1,5 +1,5 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from './hooks/useAuth';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { AuthProvider, useAuth } from './hooks/useAuth';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Login } from './pages/Login';
 import { Signup } from './pages/Signup';
@@ -18,6 +18,18 @@ import { WorkOrdersAnalysis } from './pages/WorkOrdersAnalysis';
 import { BillsOfMaterials } from './pages/BillsOfMaterials';
 import { BillOfMaterialForm } from './pages/BillOfMaterialForm';
 import { ProfileSetup } from './pages/ProfileSetup';
+import NLToSQLModal from './components/NLToSQLModal';
+
+const ConditionalNLModal = () => {
+  const { user } = useAuth();
+  const location = useLocation();
+  
+  // Only show on authenticated pages (not login, signup, etc.)
+  const publicRoutes = ['/login', '/signup', '/verify-otp'];
+  const isPublicRoute = publicRoutes.includes(location.pathname);
+  
+  return user && !isPublicRoute ? <NLToSQLModal /> : null;
+};
 
 function App() {
   return (
@@ -109,6 +121,9 @@ function App() {
           } />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        
+        {/* NL to SQL Floating Icon - appears only on authenticated pages */}
+        <ConditionalNLModal />
       </Router>
     </AuthProvider>
   );

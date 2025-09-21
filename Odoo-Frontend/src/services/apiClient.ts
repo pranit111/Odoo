@@ -1123,6 +1123,21 @@ export class ApiClient {
     return this.handleResponse<{ message: string }>(response);
   }
 
+  // NL to SQL API
+  async executeNLQuery(query: string): Promise<{ sql: string; columns: string[]; rows: any[][]; error: string | null }> {
+    const response = await this.makeRequest('/nl-sql/execute/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query })
+    });
+    return this.handleResponse<{ sql: string; columns: string[]; rows: any[][]; error: string | null }>(response);
+  }
+
+  async getDbSchema(): Promise<{ schema: string }> {
+    const response = await this.makeRequest('/nl-sql/schema/');
+    return this.handleResponse<{ schema: string }>(response);
+  }
+
   // User Management API
   async getOperators(): Promise<User[]> {
     const response = await this.makeRequest('/auth/operators/');
@@ -1132,3 +1147,7 @@ export class ApiClient {
 
 // Create a singleton instance
 export const apiClient = new ApiClient();
+
+// Export specific methods for easier importing
+export const executeNLQuery = (query: string) => apiClient.executeNLQuery(query);
+export const getDbSchema = () => apiClient.getDbSchema();

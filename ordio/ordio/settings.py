@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     'bom',
     'manufacturing',
     'inventory',
+    'nl_sql',
 ]
 
 MIDDLEWARE = [
@@ -96,7 +97,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': 'ordio',
         'USER': 'postgres',
-        'PASSWORD': '1234',
+        'PASSWORD': 'harsh@9114',
         'HOST': 'localhost',
         'PORT': '5432',
     }
