@@ -4,7 +4,8 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django.shortcuts import get_object_or_404
-from django.db import models
+from django.db import models, IntegrityError
+from django.core.exceptions import ValidationError
 from .models import BOM, BOMComponent, BOMOperation
 from .serializers import (
     BOMSerializer, BOMListSerializer, BOMComponentSerializer,
@@ -28,6 +29,38 @@ class BOMViewSet(viewsets.ModelViewSet):
         if self.action == 'list':
             return BOMListSerializer
         return BOMSerializer
+    
+    def create(self, request, *args, **kwargs):
+        """Override create to handle duplicate active BOM constraint"""
+        try:
+            return super().create(request, *args, **kwargs)
+        except (IntegrityError, ValidationError) as e:
+            # Check if this is a duplicate active BOM error
+            if 'unique_active_bom_per_product' in str(e) or 'already has an active BOM' in str(e):
+                # Get the product from the request data
+                product_id = request.data.get('product')
+                if product_id:
+                    try:
+                        from products.models import Product
+                        product = Product.objects.get(product_id=product_id)
+                        existing_bom = BOM.objects.filter(product=product, is_active=True).first()
+                        
+                        return Response({
+                            'error': f'Product "{product.name}" already has an active BOM: "{existing_bom.name}". Please deactivate the existing BOM first or create this BOM as inactive.',
+                            'existing_bom_id': str(existing_bom.bom_id) if existing_bom else None,
+                            'existing_bom_name': existing_bom.name if existing_bom else None
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                    except Product.DoesNotExist:
+                        pass
+                
+                return Response({
+                    'error': 'This product already has an active BOM. Only one active BOM per product is allowed.'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Re-raise other types of errors
+            return Response({
+                'error': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
     
     @action(detail=False, methods=['get'])
     def active(self, request):
@@ -67,6 +100,14 @@ class BOMViewSet(viewsets.ModelViewSet):
         serializer = BOMOperationCreateSerializer(data=request.data)
         
         if serializer.is_valid():
+            # Check for sequence uniqueness
+            sequence = serializer.validated_data.get('sequence')
+            if sequence and BOMOperation.objects.filter(bom=bom, sequence=sequence).exists():
+                return Response(
+                    {'sequence': [f'Sequence {sequence} already exists for this BOM']},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
             serializer.save(bom=bom)
             return Response(
                 BOMOperationSerializer(serializer.instance).data,
@@ -164,6 +205,54 @@ class BOMViewSet(viewsets.ModelViewSet):
             BOMSerializer(new_bom, context={'request': request}).data,
             status=status.HTTP_201_CREATED
         )
+    
+    @action(detail=True, methods=['post'])
+    def deactivate(self, request, pk=None):
+        """
+        Deactivate a BOM
+        POST /api/boms/{id}/deactivate/
+        """
+        bom = self.get_object()
+        
+        if not bom.is_active:
+            return Response(
+                {'error': 'BOM is already inactive'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        bom.is_active = False
+        bom.save()
+        
+        return Response({
+            'message': f'BOM "{bom.name}" has been deactivated',
+            'bom': BOMSerializer(bom, context={'request': request}).data
+        })
+    
+    @action(detail=True, methods=['post'])
+    def activate(self, request, pk=None):
+        """
+        Activate a BOM (deactivates other active BOMs for same product)
+        POST /api/boms/{id}/activate/
+        """
+        bom = self.get_object()
+        
+        if bom.is_active:
+            return Response(
+                {'error': 'BOM is already active'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Deactivate other active BOMs for the same product
+        BOM.objects.filter(product=bom.product, is_active=True).update(is_active=False)
+        
+        # Activate this BOM
+        bom.is_active = True
+        bom.save()
+        
+        return Response({
+            'message': f'BOM "{bom.name}" has been activated',
+            'bom': BOMSerializer(bom, context={'request': request}).data
+        })
 
 
 class BOMOperationViewSet(viewsets.ModelViewSet):

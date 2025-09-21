@@ -113,20 +113,14 @@ class BOMOperationCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = BOMOperation
         fields = [
-            'bom', 'name', 'sequence', 'work_center', 'duration_minutes',
+            'name', 'sequence', 'work_center', 'duration_minutes',
             'setup_time_minutes', 'description'
         ]
     
     def validate(self, data):
         """Ensure sequence is unique within the BOM"""
-        bom = data.get('bom')
-        sequence = data.get('sequence')
-        
-        if BOMOperation.objects.filter(bom=bom, sequence=sequence).exists():
-            raise serializers.ValidationError({
-                'sequence': f'Sequence {sequence} already exists for this BOM'
-            })
-        
+        # Note: BOM validation will be handled in the view since bom is passed via save()
+        # We can't validate sequence uniqueness here without the BOM instance
         return data
 
 class BOMOperationListSerializer(serializers.ModelSerializer):
