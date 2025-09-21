@@ -176,7 +176,66 @@ export const BillOfMaterialForm: React.FC = () => {
       navigate('/bills-of-materials');
     } catch (error) {
       console.error('Error saving BOM:', error);
-      alert(`Error saving BOM: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      
+      // Handle specific API errors
+      if (error instanceof Error) {
+        let errorMessage = error.message;
+        
+        // Check if it's a duplicate active BOM error
+        if (errorMessage.includes('already has an active BOM')) {
+          const confirmed = window.confirm(
+            `${errorMessage}\n\nWould you like to create this BOM as inactive instead? You can activate it later by deactivating the existing BOM.`
+          );
+          
+          if (confirmed) {
+            // Retry with is_active = false
+            try {
+              const selectedProductForRetry = finishedProducts?.find(p => p.product_id === formData.finishedProduct);
+              const bomData = {
+                product: formData.finishedProduct,
+                name: `BOM for ${selectedProductForRetry?.name || formData.finishedProduct}`,
+                version: '1.0',
+                is_active: false  // Create as inactive
+              };
+              
+              const newBOM = await apiClient.createBOM(bomData);
+              
+              // Add components and operations as before
+              for (const component of validComponents) {
+                const componentData = {
+                  component: component.name,
+                  quantity: component.toConsume.toString(),
+                  unit_of_measure: component.units
+                };
+                await apiClient.addBOMComponent(newBOM.bom_id, componentData);
+              }
+              
+              for (const [index, operation] of validOperations.entries()) {
+                const operationData = {
+                  name: operation.operationName,
+                  sequence: index + 1,
+                  work_center: operation.workCenter,
+                  duration_minutes: operation.expectedDuration * 60,
+                  description: `Operation ${index + 1}: ${operation.operationName}`
+                };
+                await apiClient.addBOMOperation(newBOM.bom_id, operationData);
+              }
+              
+              alert('Bill of Materials created successfully as inactive! You can activate it later from the BOM list.');
+              navigate('/bills-of-materials');
+              return;
+              
+            } catch (retryError) {
+              console.error('Error creating inactive BOM:', retryError);
+              errorMessage = `Failed to create inactive BOM: ${retryError instanceof Error ? retryError.message : 'Unknown error'}`;
+            }
+          }
+        }
+        
+        alert(`Error saving BOM: ${errorMessage}`);
+      } else {
+        alert('Error saving BOM: Unknown error');
+      }
     }
   };
 

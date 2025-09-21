@@ -887,7 +887,20 @@ export class ApiClient {
     }
     
     const response = await this.makeRequest(`/stock-ledger/?${queryParams.toString()}`);
-    return this.handleResponse<PaginatedResponse<StockLedgerEntry>>(response);
+    const data = await this.handleResponse<StockLedgerEntry[] | PaginatedResponse<StockLedgerEntry>>(response);
+    
+    // Handle direct array response vs paginated response
+    if (Array.isArray(data)) {
+      console.log('Stock ledger API returned direct array, transforming to paginated format');
+      return {
+        count: data.length,
+        next: undefined,
+        previous: undefined,
+        results: data
+      };
+    }
+    
+    return data as PaginatedResponse<StockLedgerEntry>;
   }
 
   async getStockLedgerSummary(params?: {
