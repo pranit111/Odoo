@@ -5,6 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django.shortcuts import get_object_or_404
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 from .models import ManufacturingOrder, WorkOrder, MOComponentRequirement
 from .serializers import (
     ManufacturingOrderSerializer, ManufacturingOrderListSerializer,
@@ -100,6 +101,12 @@ class ManufacturingOrderViewSet(viewsets.ModelViewSet):
         try:
             # Process stock movements
             movements = StockOperations.complete_manufacturing_order(mo)
+            
+            # Update MO status to DONE and set completion date
+            mo.status = 'DONE'
+            mo.completion_date = timezone.now()
+            mo.quantity_produced = mo.quantity_to_produce
+            mo.save(update_fields=['status', 'completion_date', 'quantity_produced'])
             
             return Response({
                 'message': 'MO completed successfully',
