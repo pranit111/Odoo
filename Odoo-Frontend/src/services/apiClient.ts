@@ -373,9 +373,33 @@ export class ApiClient {
       });
     }
     
-  const query = queryParams.toString();
-  const response = await this.makeRequest(`/products/${query ? `?${query}` : ''}`);
-    return this.handleResponse<PaginatedResponse<Product>>(response);
+    const query = queryParams.toString();
+    const response = await this.makeRequest(`/products/${query ? `?${query}` : ''}`);
+    
+    // Debug logging for products API
+    console.log('=== PRODUCTS API DEBUG ===');
+    console.log('API URL:', `/products/${query ? `?${query}` : ''}`);
+    console.log('Query params:', params);
+    
+    const rawData = await this.handleResponse<Product[]>(response);
+    
+    // Transform the direct array to paginated response format
+    const result: PaginatedResponse<Product> = {
+      count: rawData.length,
+      results: rawData,
+      next: undefined,
+      previous: undefined
+    };
+    
+    console.log('Raw products data:', rawData);
+    console.log('Transformed products result:', result);
+    console.log('Products count:', result.results.length);
+    if (result.results && result.results.length > 0) {
+      console.log('First product:', result.results[0]);
+    }
+    console.log('=== END PRODUCTS API DEBUG ===');
+    
+    return result;
   }
 
   async getProduct(id: string): Promise<Product> {
