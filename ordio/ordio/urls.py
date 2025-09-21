@@ -25,4 +25,5 @@ urlpatterns = [
     path('api/', include('bom.urls')),
     path('api/', include('manufacturing.urls')),
     path('api/', include('inventory.urls')),
+    path('api/nl-sql/', include('nl_sql.urls')),
 ]
