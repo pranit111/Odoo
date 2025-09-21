@@ -785,6 +785,21 @@ export function useWorkOrders(params?: {
     setState(prev => ({ ...prev, loading: true, error: null }));
     try {
       const response = await apiClient.getWorkOrders(params);
+      
+      // Debug logging
+      console.log('=== WORK ORDERS API RESPONSE DEBUG ===');
+      console.log('Full response:', response);
+      console.log('Response type:', typeof response);
+      console.log('Response.results:', response.results);
+      console.log('Response.results type:', typeof response.results);
+      console.log('Response.results is array:', Array.isArray(response.results));
+      console.log('Response.results length:', response.results?.length);
+      if (response.results && response.results.length > 0) {
+        console.log('First work order:', response.results[0]);
+        console.log('First work order keys:', Object.keys(response.results[0]));
+      }
+      console.log('=== END DEBUG ===');
+      
       setState(prev => ({
         ...prev,
         data: response.results,

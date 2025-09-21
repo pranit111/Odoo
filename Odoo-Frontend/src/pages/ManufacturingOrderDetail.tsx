@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { apiClient } from '../services/apiClient';
+
+import { apiClient, MOComponentRequirement, WorkOrder } from '../services/apiClient';
 import { Table } from '../components/Table';
 import { AppLayout } from '../components/AppLayout';
-import { ArrowLeft, Play, Square } from 'lucide-react';
+import { ArrowLeft, Play, Square, Pause, CheckCircle, Clock } from 'lucide-react';
 
 export const ManufacturingOrderDetail: React.FC = () => {
   const { id } = useParams();
@@ -12,11 +13,22 @@ export const ManufacturingOrderDetail: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [workOrders, setWorkOrders] = useState<any[]>([]);
-  const [componentRequirements, setComponentRequirements] = useState<any[]>([]);
+  const [componentRequirements, setComponentRequirements] = useState<MOComponentRequirement[]>([]);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
     loadMO();
   }, [id]);
+
+  // Timer for live updates of in-progress work orders
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
 
   const loadMO = async () => {
     console.log('Loading MO with ID:', id);
@@ -54,22 +66,172 @@ export const ManufacturingOrderDetail: React.FC = () => {
     }
   };
 
-  const workOrderColumns = [
-    { key: "wo_number", label: "Work Order" },
-    { key: "name", label: "Operation" },
-    { key: "work_center_name", label: "Work Center" },
-    { key: "estimated_duration_minutes", label: "Duration (min)" },
-    { key: "actual_duration_minutes", label: "Real Duration (min)" },
-    { key: "status", label: "Status" },
-    { key: "actions", label: "Actions", render: "buttons" }
-  ];
+  const handleWorkOrderAction = async (workOrderId: string, action: 'start' | 'pause' | 'complete', notes?: string) => {
+    setActionLoading(workOrderId);
+    
+    try {
+      let result;
+      switch (action) {
+        case 'start':
+          result = await apiClient.startWorkOrder(workOrderId, { notes: notes || 'Started from detail view' });
+          break;
+        case 'pause':
+          result = await apiClient.pauseWorkOrder(workOrderId, { notes: notes || 'Paused from detail view' });
+          break;
+        case 'complete':
+          result = await apiClient.completeWorkOrder(workOrderId, { notes: notes || 'Completed from detail view' });
+          break;
+      }
+      
+      console.log(`Work order ${action} result:`, result);
+      
+      // Reload the MO to get updated work orders
+      await loadMO();
+      
+    } catch (error) {
+      console.error(`Error ${action}ing work order:`, error);
+      alert(`Failed to ${action} work order: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const formatDuration = (minutes: number): string => {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:00`;
+  };
+
+  // Format duration with live seconds for in-progress work orders
+  const formatDurationWithLiveTime = (workOrder: any): string => {
+    if (workOrder.status === 'IN_PROGRESS' && workOrder.actual_start_date) {
+      const startTime = new Date(workOrder.actual_start_date);
+      const now = currentTime;
+      const elapsedMs = now.getTime() - startTime.getTime();
+      
+      // Add any existing actual duration and subtract pause time
+      const existingMinutes = workOrder.actual_duration_minutes || 0;
+      const pauseMinutes = workOrder.total_pause_minutes || 0;
+      
+      // Calculate current session time (if not paused)
+      let currentSessionMs = 0;
+      if (!workOrder.pause_start_time) {
+        currentSessionMs = elapsedMs;
+      } else {
+        // If paused, only count time up to pause start
+        const pauseStart = new Date(workOrder.pause_start_time);
+        currentSessionMs = pauseStart.getTime() - startTime.getTime();
+      }
+      
+      const currentSessionMinutes = Math.floor(currentSessionMs / (1000 * 60));
+      const currentSessionSeconds = Math.floor((currentSessionMs % (1000 * 60)) / 1000);
+      
+      const totalMinutes = existingMinutes + currentSessionMinutes - pauseMinutes;
+      const totalSeconds = currentSessionSeconds;
+      
+      const hours = Math.floor(totalMinutes / 60);
+      const mins = totalMinutes % 60;
+      
+      return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${totalSeconds.toString().padStart(2, '0')}`;
+    }
+    
+    // For non-active work orders, just show minutes with :00 seconds
+    return formatDuration(workOrder.actual_duration_minutes || 0);
+  };
+
+  const getWorkOrderStatusColor = (status: string): string => {
+    switch (status) {
+      case 'PENDING': return 'bg-yellow-100 text-yellow-800';
+      case 'IN_PROGRESS': return 'bg-blue-100 text-blue-800';
+      case 'PAUSED': return 'bg-orange-100 text-orange-800';
+      case 'COMPLETED': return 'bg-green-100 text-green-800';
+      case 'CANCELED': return 'bg-red-100 text-red-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const renderWorkOrderActions = (workOrder: any) => {
+    const isLoading = actionLoading === workOrder.wo_id;
+    
+    return (
+      <div className="flex items-center gap-2">
+        {workOrder.status === 'PENDING' && (
+          <button
+            onClick={() => handleWorkOrderAction(workOrder.wo_id, 'start')}
+            disabled={isLoading}
+            className="flex items-center gap-1 px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded-md text-sm disabled:opacity-50"
+            title="Start Work Order"
+          >
+            <Play size={14} />
+            {isLoading ? 'Starting...' : 'Start'}
+          </button>
+        )}
+        
+        {workOrder.status === 'IN_PROGRESS' && (
+          <>
+            <button
+              onClick={() => handleWorkOrderAction(workOrder.wo_id, 'pause')}
+              disabled={isLoading}
+              className="flex items-center gap-1 px-3 py-1 bg-orange-600 hover:bg-orange-700 text-white rounded-md text-sm disabled:opacity-50"
+              title="Pause Work Order"
+            >
+              <Pause size={14} />
+              {isLoading ? 'Pausing...' : 'Pause'}
+            </button>
+            <button
+              onClick={() => handleWorkOrderAction(workOrder.wo_id, 'complete')}
+              disabled={isLoading}
+              className="flex items-center gap-1 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm disabled:opacity-50"
+              title="Complete Work Order"
+            >
+              <CheckCircle size={14} />
+              {isLoading ? 'Completing...' : 'Complete'}
+            </button>
+          </>
+        )}
+        
+        {workOrder.status === 'PAUSED' && (
+          <>
+            <button
+              onClick={() => handleWorkOrderAction(workOrder.wo_id, 'start')}
+              disabled={isLoading}
+              className="flex items-center gap-1 px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded-md text-sm disabled:opacity-50"
+              title="Resume Work Order"
+            >
+              <Play size={14} />
+              {isLoading ? 'Resuming...' : 'Resume'}
+            </button>
+            <button
+              onClick={() => handleWorkOrderAction(workOrder.wo_id, 'complete')}
+              disabled={isLoading}
+              className="flex items-center gap-1 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm disabled:opacity-50"
+              title="Complete Work Order"
+            >
+              <CheckCircle size={14} />
+              {isLoading ? 'Completing...' : 'Complete'}
+            </button>
+          </>
+        )}
+        
+        {workOrder.status === 'COMPLETED' && (
+          <span className="flex items-center gap-1 px-3 py-1 bg-green-100 text-green-800 rounded-md text-sm">
+            <CheckCircle size={14} />
+            Completed
+          </span>
+        )}
+      </div>
+    );
+  };
 
   const bomColumns = [
     { key: "component_name", label: "Component" },
-    { key: "required_quantity", label: "Req. Qty" },
-    { key: "available_stock", label: "In-Stock" },
+    { key: "component_sku", label: "SKU" },
+    { key: "quantity_per_unit", label: "Qty per Unit" },
+    { key: "required_quantity", label: "Total Required" },
+    { key: "available_stock", label: "Available Stock" },
+    { key: "consumed_quantity", label: "Consumed" },
     { key: "shortage", label: "Shortage" },
-    { key: "actions", label: "Actions", render: "buttons" }
+    { key: "is_satisfied", label: "Status" }
   ];
 
   if (loading) {
@@ -197,11 +359,67 @@ export const ManufacturingOrderDetail: React.FC = () => {
         <div className="space-y-8">
           <div>
             <h2 className="text-xl font-semibold text-black mb-4">Work Orders</h2>
-            <Table
-              columns={workOrderColumns}
-              data={workOrders}
-              loading={loading}
-            />
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Work Order</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Operation</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Work Center</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duration</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Operator</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {workOrders.map((workOrder) => (
+                      <tr key={workOrder.wo_id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {workOrder.wo_number}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {workOrder.name}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {workOrder.work_center_name}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <div className="flex flex-col">
+                            <span>Est: {formatDuration(workOrder.estimated_duration_minutes)}</span>
+                            <span className="text-gray-500">
+                              Act: {formatDurationWithLiveTime(workOrder)}
+                              {workOrder.status === 'IN_PROGRESS' && !workOrder.pause_start_time && (
+                                <Clock className="inline ml-1 h-3 w-3 text-blue-500" />
+                              )}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`px-3 py-1 rounded-full text-xs font-medium ${getWorkOrderStatusColor(workOrder.status)}`}>
+                            {workOrder.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {workOrder.operator_name || 'Unassigned'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {renderWorkOrderActions(workOrder)}
+                        </td>
+                      </tr>
+                    ))}
+                    {workOrders.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
+                          No work orders found
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
 
           <div>

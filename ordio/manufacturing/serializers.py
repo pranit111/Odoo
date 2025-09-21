@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import ManufacturingOrder, WorkOrder
+from .models import ManufacturingOrder, WorkOrder, MOComponentRequirement
 from bom.serializers import BOMListSerializer
 from products.serializers import ProductListSerializer
 from workcenters.serializers import WorkCenterListSerializer
@@ -7,13 +7,38 @@ from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
+class MOComponentRequirementSerializer(serializers.ModelSerializer):
+    """Serializer for MO Component Requirements"""
+    
+    component_name = serializers.CharField(source='component.name', read_only=True)
+    component_sku = serializers.CharField(source='component.sku', read_only=True)
+    available_stock = serializers.DecimalField(source='component.current_stock', read_only=True, max_digits=10, decimal_places=2)
+    is_satisfied = serializers.BooleanField(read_only=True)
+    remaining_quantity = serializers.DecimalField(read_only=True, max_digits=10, decimal_places=2)
+    shortage = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = MOComponentRequirement
+        fields = [
+            'requirement_id', 'component', 'component_name', 'component_sku',
+            'quantity_per_unit', 'required_quantity', 'consumed_quantity',
+            'available_stock', 'is_satisfied', 'remaining_quantity', 'shortage',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['requirement_id', 'created_at', 'updated_at']
+    
+    def get_shortage(self, obj):
+        """Calculate shortage: max(0, required - available)"""
+        shortage = obj.required_quantity - obj.component.current_stock
+        return max(0, shortage)
+
 class WorkOrderSerializer(serializers.ModelSerializer):
     """Serializer for Work Orders"""
     
     work_center_name = serializers.CharField(source='work_center.name', read_only=True)
     operator_name = serializers.CharField(source='operator.username', read_only=True)
     efficiency_percentage = serializers.FloatField(source='get_efficiency_percentage', read_only=True)
-    is_overdue = serializers.BooleanField(source='is_overdue', read_only=True)
+    is_overdue = serializers.BooleanField(read_only=True)
     
     class Meta:
         model = WorkOrder
@@ -45,6 +70,7 @@ class ManufacturingOrderSerializer(serializers.ModelSerializer):
     created_by_name = serializers.CharField(source='created_by.username', read_only=True)
     
     work_orders = WorkOrderSerializer(many=True, read_only=True)
+    component_requirements = MOComponentRequirementSerializer(many=True, read_only=True)
     progress_percentage = serializers.FloatField(source='get_progress_percentage', read_only=True)
     total_estimated_cost = serializers.FloatField(source='get_total_estimated_cost', read_only=True)
     component_availability_check = serializers.BooleanField(source='check_component_availability', read_only=True)
@@ -58,8 +84,8 @@ class ManufacturingOrderSerializer(serializers.ModelSerializer):
             'scheduled_end_date', 'actual_start_date', 'completion_date',
             'assignee', 'assignee_name', 'quantity_produced', 'notes',
             'created_by', 'created_by_name', 'created_at', 'updated_at',
-            'work_orders', 'progress_percentage', 'total_estimated_cost',
-            'component_availability_check', 'can_start'
+            'work_orders', 'component_requirements', 'progress_percentage', 
+            'total_estimated_cost', 'component_availability_check', 'can_start'
         ]
         read_only_fields = [
             'mo_id', 'mo_number', 'created_at', 'updated_at', 'product_name',
@@ -69,7 +95,10 @@ class ManufacturingOrderSerializer(serializers.ModelSerializer):
     
     def create(self, validated_data):
         validated_data['created_by'] = self.context['request'].user
-        return super().create(validated_data)
+        mo = super().create(validated_data)
+        # Populate components from BOM after creation
+        mo.populate_components_from_bom()
+        return mo
     
     def get_assignee_name(self, obj):
         """Return assignee username or None if not assigned"""
@@ -114,7 +143,10 @@ class ManufacturingOrderCreateSerializer(serializers.ModelSerializer):
     
     def create(self, validated_data):
         validated_data['created_by'] = self.context['request'].user
-        return super().create(validated_data)
+        mo = super().create(validated_data)
+        # Populate components from BOM after creation
+        mo.populate_components_from_bom()
+        return mo
 
 class ComponentRequirementSerializer(serializers.Serializer):
     """Serializer for component requirements display"""

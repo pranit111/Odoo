@@ -81,20 +81,43 @@ export interface ManufacturingOrder {
   mo_number: string;
   product: string;
   product_name: string;
-  product_sku: string;
+  product_sku?: string;
   bom: string;
   bom_name: string;
   quantity_to_produce: number;
-  status: 'DRAFT' | 'CONFIRMED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELED';
-  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+  status: 'DRAFT' | 'CONFIRMED' | 'IN_PROGRESS' | 'DONE' | 'CANCELED';
+  priority: 'LOW' | 'MEDIUM' | 'HIGH';
   scheduled_start_date: string;
+  scheduled_end_date?: string;
   actual_start_date?: string;
-  actual_completion_date?: string;
+  completion_date?: string;
   assignee?: string;
   assignee_name?: string;
+  quantity_produced?: number;
   notes?: string;
   progress_percentage: number;
-  work_order_count?: number;
+  work_orders?: WorkOrder[];
+  component_requirements?: MOComponentRequirement[];
+  component_availability_check?: boolean;
+  can_start?: boolean;
+  created_by?: string;
+  created_by_name?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MOComponentRequirement {
+  requirement_id: string;
+  component: string;
+  component_name: string;
+  component_sku: string;
+  quantity_per_unit: number;
+  required_quantity: number;
+  consumed_quantity: number;
+  available_stock: number;
+  is_satisfied: boolean;
+  remaining_quantity: number;
+  shortage: number;
   created_at: string;
   updated_at: string;
 }
@@ -103,26 +126,24 @@ export interface WorkOrder {
   wo_id: string;
   wo_number: string;
   name: string;
-  manufacturing_order: string;
-  manufacturing_order_number: string;
   work_center: string;
   work_center_name: string;
-  work_center_code: string;
   sequence: number;
   status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELED';
-  operator?: string;
-  operator_name?: string;
+  operator?: string | null;
   estimated_duration_minutes: number;
   actual_duration_minutes: number;
-  actual_start_date?: string;
-  actual_completion_date?: string;
+  actual_start_date?: string | null;
+  completion_date?: string | null;
+  scheduled_start_date?: string | null;
   efficiency_percentage: number;
-  description?: string;
   notes?: string;
-  scheduled_start?: string;
+  quality_notes?: string;
   is_overdue: boolean;
   created_at: string;
   updated_at: string;
+  // Computed field for frontend compatibility
+  manufacturing_order_number?: string;
 }
 
 export interface StockLedgerEntry {
@@ -258,6 +279,18 @@ export interface CreateBOMComponentData {
   quantity: string;
   unit_of_measure?: string;
   notes?: string;
+}
+
+export interface CreateMOComponentData {
+  component: string;
+  quantity_per_unit: number;
+  required_quantity: number;
+}
+
+export interface UpdateMOComponentData {
+  quantity_per_unit?: number;
+  required_quantity?: number;
+  consumed_quantity?: number;
 }
 
 export interface CreateStockLedgerData {
@@ -598,15 +631,9 @@ export class ApiClient {
     return this.handleResponse<PaginatedResponse<ManufacturingOrder>>(response);
   }
 
-  async getManufacturingOrder(id: string): Promise<ManufacturingOrder & { 
-    work_orders: WorkOrder[];
-    component_requirements: ComponentRequirement[];
-  }> {
+  async getManufacturingOrder(id: string): Promise<ManufacturingOrder> {
     const response = await this.makeRequest(`/manufacturing-orders/${id}/`);
-    return this.handleResponse<ManufacturingOrder & { 
-      work_orders: WorkOrder[];
-      component_requirements: ComponentRequirement[];
-    }>(response);
+    return this.handleResponse<ManufacturingOrder>(response);
   }
 
   async createManufacturingOrder(data: CreateManufacturingOrderData): Promise<ManufacturingOrder> {
@@ -658,21 +685,32 @@ export class ApiClient {
     return this.handleResponse<{ message: string }>(response);
   }
 
-  async getComponentRequirements(id: string): Promise<{
-    mo_number: string;
-    quantity_to_produce: number;
-    requirements: ComponentRequirement[];
-    all_sufficient: boolean;
-    total_shortages: number;
-  }> {
+  async getComponentRequirements(id: string): Promise<MOComponentRequirement[]> {
     const response = await this.makeRequest(`/manufacturing-orders/${id}/component_requirements/`);
-    return this.handleResponse<{
-      mo_number: string;
-      quantity_to_produce: number;
-      requirements: ComponentRequirement[];
-      all_sufficient: boolean;
-      total_shortages: number;
-    }>(response);
+    return this.handleResponse<MOComponentRequirement[]>(response);
+  }
+
+  async addMOComponent(moId: string, data: CreateMOComponentData): Promise<MOComponentRequirement> {
+    const response = await this.makeRequest(`/manufacturing-orders/${moId}/add_component/`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    return this.handleResponse<MOComponentRequirement>(response);
+  }
+
+  async updateMOComponent(moId: string, componentId: string, data: UpdateMOComponentData): Promise<MOComponentRequirement> {
+    const response = await this.makeRequest(`/manufacturing-orders/${moId}/update_component/?component_id=${componentId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+    return this.handleResponse<MOComponentRequirement>(response);
+  }
+
+  async removeMOComponent(moId: string, componentId: string): Promise<{ message: string }> {
+    const response = await this.makeRequest(`/manufacturing-orders/${moId}/remove_component/?component_id=${componentId}`, {
+      method: 'DELETE',
+    });
+    return this.handleResponse<{ message: string }>(response);
   }
 
   async getManufacturingDashboard(): Promise<ManufacturingDashboard> {
@@ -699,7 +737,42 @@ export class ApiClient {
     }
     
     const response = await this.makeRequest(`/work-orders/?${queryParams.toString()}`);
-    return this.handleResponse<PaginatedResponse<WorkOrder>>(response);
+    
+    // Debug logging for raw response
+    console.log('=== API CLIENT DEBUG - RAW RESPONSE ===');
+    console.log('API URL:', `/work-orders/?${queryParams.toString()}`);
+    console.log('Raw response status:', response.status);
+    
+    const rawData = await this.handleResponse<WorkOrder[]>(response);
+    
+    // Transform the direct array to paginated response format
+    // Also add missing manufacturing_order_number field
+    const transformedData = rawData.map(wo => ({
+      ...wo,
+      manufacturing_order_number: wo.wo_number.includes('-') 
+        ? wo.wo_number.split('-')[0] // Extract MO number from wo_number like "MO2025090015-01"
+        : wo.wo_number // Fallback to wo_number if no dash found
+    }));
+    
+    const result: PaginatedResponse<WorkOrder> = {
+      count: transformedData.length,
+      results: transformedData,
+      next: undefined,
+      previous: undefined
+    };
+    
+    // Debug logging for parsed result
+    console.log('=== API CLIENT DEBUG - PARSED RESULT ===');
+    console.log('Raw data from API:', rawData);
+    console.log('Transformed result:', result);
+    console.log('Result.results length:', result.results.length);
+    if (result.results && result.results.length > 0) {
+      console.log('First item in results:', result.results[0]);
+      console.log('First item keys:', Object.keys(result.results[0]));
+    }
+    console.log('=== END API CLIENT DEBUG ===');
+    
+    return result;
   }
 
   async getWorkOrder(id: string): Promise<WorkOrder> {

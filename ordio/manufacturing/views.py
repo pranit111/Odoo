@@ -5,12 +5,12 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django.shortcuts import get_object_or_404
 from django.core.exceptions import ValidationError
-from .models import ManufacturingOrder, WorkOrder
+from .models import ManufacturingOrder, WorkOrder, MOComponentRequirement
 from .serializers import (
     ManufacturingOrderSerializer, ManufacturingOrderListSerializer,
     ManufacturingOrderCreateSerializer, WorkOrderSerializer,
     WorkOrderUpdateSerializer, ComponentRequirementSerializer,
-    WorkOrderActionSerializer
+    WorkOrderActionSerializer, MOComponentRequirementSerializer
 )
 from inventory.models import StockOperations
 
@@ -32,6 +32,20 @@ class ManufacturingOrderViewSet(viewsets.ModelViewSet):
             return ManufacturingOrderCreateSerializer
         return ManufacturingOrderSerializer
     
+    def create(self, request, *args, **kwargs):
+        """
+        Override create to return full MO data after creation
+        This ensures frontend gets mo_id for auto-confirmation
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        instance = serializer.save()
+        
+        # Return full MO data using the regular serializer
+        response_serializer = ManufacturingOrderSerializer(instance, context={'request': request})
+        headers = self.get_success_headers(response_serializer.data)
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
     @action(detail=True, methods=['post'])
     def confirm(self, request, pk=None):
         """
@@ -106,10 +120,86 @@ class ManufacturingOrderViewSet(viewsets.ModelViewSet):
         GET /api/manufacturing-orders/{id}/component_requirements/
         """
         mo = self.get_object()
-        requirements = mo.get_required_components()
-        
-        serializer = ComponentRequirementSerializer(requirements, many=True)
+        requirements = mo.component_requirements.all()
+        serializer = MOComponentRequirementSerializer(requirements, many=True)
         return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def add_component(self, request, pk=None):
+        """
+        Add a component requirement to MO
+        POST /api/manufacturing-orders/{id}/add_component/
+        """
+        mo = self.get_object()
+        
+        if mo.status not in ['DRAFT', 'CONFIRMED']:
+            return Response(
+                {'error': 'Can only add components to draft or confirmed MOs'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        serializer = MOComponentRequirementSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(mo=mo)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=True, methods=['put', 'patch'])
+    def update_component(self, request, pk=None):
+        """
+        Update a component requirement
+        PUT/PATCH /api/manufacturing-orders/{id}/update_component/?component_id=xxx
+        """
+        mo = self.get_object()
+        component_id = request.query_params.get('component_id')
+        
+        if not component_id:
+            return Response(
+                {'error': 'component_id parameter required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            component_req = mo.component_requirements.get(requirement_id=component_id)
+        except MOComponentRequirement.DoesNotExist:
+            return Response(
+                {'error': 'Component requirement not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        partial = request.method == 'PATCH'
+        serializer = MOComponentRequirementSerializer(component_req, data=request.data, partial=partial)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=True, methods=['delete'])
+    def remove_component(self, request, pk=None):
+        """
+        Remove a component requirement
+        DELETE /api/manufacturing-orders/{id}/remove_component/?component_id=xxx
+        """
+        mo = self.get_object()
+        component_id = request.query_params.get('component_id')
+        
+        if not component_id:
+            return Response(
+                {'error': 'component_id parameter required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            component_req = mo.component_requirements.get(requirement_id=component_id)
+            component_req.delete()
+            return Response({'message': 'Component requirement removed'})
+        except MOComponentRequirement.DoesNotExist:
+            return Response(
+                {'error': 'Component requirement not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
     
     @action(detail=False, methods=['get'])
     def dashboard(self, request):

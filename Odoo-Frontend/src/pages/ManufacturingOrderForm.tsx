@@ -56,12 +56,35 @@ export const ManufacturingOrderForm: React.FC = () => {
     }
   ]);
 
-  const loadWorkOrders = async () => {
-    if (!moId) return;
+  const loadWorkOrders = async (targetMoId?: string) => {
+    const currentMoId = targetMoId || moId;
+    if (!currentMoId) {
+      console.log('No MO ID available for loading work orders');
+      return;
+    }
     
     try {
+      console.log('Loading work orders for MO:', currentMoId);
       const { apiClient } = await import('../services/apiClient');
-      const mo = await apiClient.getManufacturingOrder(moId);
+      const mo = await apiClient.getManufacturingOrder(currentMoId);
+      
+      console.log('MO data loaded:', {
+        status: mo.status,
+        work_orders_count: mo.work_orders?.length || 0,
+        work_orders: mo.work_orders
+      });
+      
+      // Update form state to match backend state
+      const backendStateMap = {
+        'DRAFT': 'Draft',
+        'CONFIRMED': 'Confirmed', 
+        'IN_PROGRESS': 'In-Progress',
+        'COMPLETED': 'Done'
+      };
+      
+      const newState = backendStateMap[mo.status as keyof typeof backendStateMap] || mo.status;
+      setFormData(prev => ({ ...prev, state: newState }));
+      
       if (mo.work_orders && mo.work_orders.length > 0) {
         const formattedWorkOrders = mo.work_orders.map(wo => ({
           wo_id: wo.wo_id,
@@ -73,15 +96,22 @@ export const ManufacturingOrderForm: React.FC = () => {
                   wo.status === 'IN_PROGRESS' ? 'Doing' : 
                   wo.status === 'COMPLETED' ? 'Done' : wo.status,
           isPlaying: wo.status === 'IN_PROGRESS',
-          isPaused: wo.status === 'IN_PROGRESS' && wo.actual_start_date !== null, // Consider paused if started but not completed
+          isPaused: wo.status === 'IN_PROGRESS' && wo.actual_start_date !== null,
           operator: wo.operator || null,
           operator_name: wo.operator_name || null,
           actual_duration_minutes: wo.actual_duration_minutes || 0
         }));
+        
+        console.log('Setting work orders:', formattedWorkOrders);
         setWorkOrders(formattedWorkOrders);
+      } else {
+        console.log('No work orders found, resetting to empty');
+        // Reset to empty array if no work orders found
+        setWorkOrders([]);
       }
     } catch (error) {
       console.error('Error loading work orders:', error);
+      // Don't show alert, just log the error
     }
   };
   
@@ -409,17 +439,68 @@ export const ManufacturingOrderForm: React.FC = () => {
     
     setSaving(true);
     try {
+      console.log('Manually confirming MO:', moId);
       const { apiClient } = await import('../services/apiClient');
+      
+      // Confirm the MO
       await apiClient.confirmManufacturingOrder(moId);
+      console.log('MO confirmed successfully');
+      
+      // Update form state
       setFormData(prev => ({ ...prev, state: 'Confirmed' }));
       
-      // Load work orders after confirmation
-      await loadWorkOrders();
+      // Load work orders with proper delay
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      await loadWorkOrders(moId);
       
-      alert('Manufacturing Order confirmed successfully!');
+      alert('Manufacturing Order confirmed successfully! Work orders have been created. Redirecting to dashboard in 2 seconds...');
+      
+      // Switch to work orders tab to show the results briefly
+      setActiveTab('workOrders');
+      
+      // Redirect to dashboard after 2 seconds
+      setTimeout(() => {
+        navigate('/');
+      }, 2000);
+      
     } catch (error) {
       console.error('Error confirming MO:', error);
-      alert('Failed to confirm Manufacturing Order: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      
+      // Check if it's a component availability error
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      if (errorMessage.includes('Insufficient components') || errorMessage.includes('availability')) {
+        const forceConfirm = window.confirm(
+          'Cannot confirm Manufacturing Order due to insufficient components in stock. ' +
+          'Would you like to force confirm anyway? This will create work orders despite component shortages.\n\n' +
+          'Click OK to force confirm, or Cancel to check component availability first.'
+        );
+        
+        if (forceConfirm) {
+          try {
+            console.log('Force confirming MO:', moId);
+            const { apiClient } = await import('../services/apiClient');
+            await apiClient.confirmManufacturingOrder(moId, { force_confirm: true });
+            console.log('MO force confirmed successfully');
+            setFormData(prev => ({ ...prev, state: 'Confirmed' }));
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            await loadWorkOrders(moId);
+            alert('Manufacturing Order force confirmed successfully! Work orders have been created.');
+            setActiveTab('workOrders');
+            
+            // Redirect to dashboard after showing results
+            setTimeout(() => {
+              navigate('/');
+            }, 2000);
+          } catch (forceError) {
+            console.error('Force confirmation failed:', forceError);
+            alert('Force confirmation also failed: ' + (forceError instanceof Error ? forceError.message : 'Unknown error'));
+          }
+        } else {
+          alert('Please check component availability or adjust inventory levels before confirming.');
+        }
+      } else {
+        alert('Failed to confirm Manufacturing Order: ' + errorMessage);
+      }
     } finally {
       setSaving(false);
     }
@@ -463,10 +544,10 @@ export const ManufacturingOrderForm: React.FC = () => {
       const manufacturingOrderData = {
         product: formData.finishedProduct,
         quantity_to_produce: parseFloat(formData.quantity),
-        priority: 'MEDIUM' as const, // Default priority
+        priority: 'MEDIUM' as const,
         scheduled_start_date: formData.scheduleDate,
         notes: `${isEditMode ? 'Updated' : 'Created'} via form. Components: ${components.length} items`
-      } as any; // Type assertion to handle optional fields
+      } as any;
       
       // Add optional fields if they exist
       if (formData.billOfMaterials) {
@@ -481,29 +562,102 @@ export const ManufacturingOrderForm: React.FC = () => {
       
       let result;
       if (isEditMode && moId) {
+        // UPDATE EXISTING MO
         result = await updateManufacturingOrder(moId, manufacturingOrderData);
         console.log('MO updated successfully:', result);
         alert('Manufacturing Order updated successfully!');
+        navigate('/');
       } else {
+        // CREATE NEW MO WITH AUTO-CONFIRMATION
         result = await createManufacturingOrder(manufacturingOrderData);
         console.log('MO created successfully:', result);
         
-        // Auto-confirm the MO after creation
         if (result?.mo_id) {
-          const { apiClient } = await import('../services/apiClient');
-          await apiClient.confirmManufacturingOrder(result.mo_id);
-          setFormData(prev => ({ ...prev, state: 'Confirmed' }));
-          alert('Manufacturing Order created and confirmed successfully!');
+          // Update the component state immediately to set up for edit mode
           setIsEditMode(true);
-          // Stay on the form to show work orders
-          return;
+          
+          // Update the URL without navigation to avoid state loss
+          window.history.replaceState({}, '', `/manufacturing-orders/${result.mo_id}`);
+          
+          try {
+            console.log('Auto-confirming MO with force_confirm:', result.mo_id);
+            const { apiClient } = await import('../services/apiClient');
+            
+            // Give backend time to fully process the MO creation
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Confirm the MO with force_confirm to bypass component availability checks
+            await apiClient.confirmManufacturingOrder(result.mo_id, { force_confirm: true });
+            console.log('MO confirmed successfully with force_confirm');
+            
+            // Update form state
+            setFormData(prev => ({ ...prev, state: 'Confirmed' }));
+            
+            // Load work orders with the specific MO ID
+            await new Promise(resolve => setTimeout(resolve, 1000)); // Additional delay for work order creation
+            await loadWorkOrders(result.mo_id);
+            
+            alert('Manufacturing Order created and confirmed successfully! Work orders are now available. Redirecting to dashboard in 2 seconds...');
+            
+            // Switch to work orders tab to show the results briefly
+            setActiveTab('workOrders');
+            
+            // After 2 seconds, redirect to dashboard to prevent duplicate creation
+            setTimeout(() => {
+              navigate('/');
+            }, 2000);
+            
+          } catch (confirmError) {
+            console.error('Error in auto-confirmation:', confirmError);
+            
+            // Check if it's a component availability error
+            const errorMessage = confirmError instanceof Error ? confirmError.message : 'Unknown error';
+            if (errorMessage.includes('Insufficient components') || errorMessage.includes('availability')) {
+              const retry = window.confirm(
+                'Manufacturing Order created successfully, but there are insufficient components in stock. ' +
+                'Would you like to force confirm anyway? This will create work orders despite component shortages.\n\n' +
+                'Click OK to force confirm, or Cancel to confirm manually later.'
+              );
+              
+              if (retry) {
+                try {
+                  const { apiClient: retryApiClient } = await import('../services/apiClient');
+                  await retryApiClient.confirmManufacturingOrder(result.mo_id, { force_confirm: true });
+                  console.log('MO force confirmed successfully');
+                  setFormData(prev => ({ ...prev, state: 'Confirmed' }));
+                  await new Promise(resolve => setTimeout(resolve, 1000));
+                  await loadWorkOrders(result.mo_id);
+                  alert('Manufacturing Order force confirmed successfully! Work orders are now available.');
+                  setActiveTab('workOrders');
+                  
+                  // Redirect to dashboard after showing success
+                  setTimeout(() => {
+                    navigate('/');
+                  }, 2000);
+                } catch (forceError) {
+                  console.error('Force confirmation failed:', forceError);
+                  alert('Force confirmation also failed. Please use the "Confirm MO & Create Work Orders" button.');
+                }
+              } else {
+                alert('Manufacturing Order created successfully. Use the "Confirm MO & Create Work Orders" button when ready.');
+                // Still redirect to dashboard to prevent duplicate creation
+                setTimeout(() => {
+                  navigate('/');
+                }, 2000);
+              }
+            } else {
+              alert('Manufacturing Order created successfully, but auto-confirmation failed: ' + errorMessage);
+              // Still redirect to dashboard
+              setTimeout(() => {
+                navigate('/');
+              }, 2000);
+            }
+          }
         } else {
           alert('Manufacturing Order created successfully!');
-          setIsEditMode(true);
+          navigate('/');
         }
       }
-      
-      navigate('/');
     } catch (error) {
       console.error(`Error ${isEditMode ? 'updating' : 'creating'} MO:`, error);
       alert(`Failed to ${isEditMode ? 'update' : 'create'} Manufacturing Order: ` + (error instanceof Error ? error.message : 'Unknown error'));
@@ -519,8 +673,21 @@ export const ManufacturingOrderForm: React.FC = () => {
       
       setLoading(true);
       try {
+        console.log('Loading existing MO:', moId);
         const { apiClient } = await import('../services/apiClient');
         const mo = await apiClient.getManufacturingOrder(moId);
+        
+        console.log('Loaded MO data:', mo);
+        
+        // Map backend status to frontend state
+        const statusMap = {
+          'DRAFT': 'Draft',
+          'CONFIRMED': 'Confirmed',
+          'IN_PROGRESS': 'In-Progress', 
+          'COMPLETED': 'Done'
+        };
+        
+        const frontendState = statusMap[mo.status as keyof typeof statusMap] || mo.status;
         
         // Populate form data from existing MO
         setFormData(prev => ({
@@ -529,9 +696,9 @@ export const ManufacturingOrderForm: React.FC = () => {
           finishedProduct: mo.product,
           quantity: mo.quantity_to_produce.toString(),
           billOfMaterials: mo.bom || '',
-          scheduleDate: mo.scheduled_start_date.split('T')[0], // Convert to date format
+          scheduleDate: mo.scheduled_start_date.split('T')[0],
           assignee: mo.assignee || '',
-          state: mo.status === 'DRAFT' ? 'Draft' : 'Confirmed'
+          state: frontendState
         }));
         
         // Load component requirements if available
@@ -541,14 +708,19 @@ export const ManufacturingOrderForm: React.FC = () => {
             name: comp.component_name,
             availability: comp.available_stock.toString(),
             toConsume: comp.required_quantity.toString(),
-            units: 'units' // Default unit, would need to be fetched from product
+            units: 'units'
           }));
           setComponents(loadedComponents);
         }
         
-        // Load work orders if MO is confirmed or later
+        // Load work orders for confirmed or later states
         if (mo.status !== 'DRAFT') {
-          await loadWorkOrders();
+          console.log('Loading work orders for confirmed MO');
+          await loadWorkOrders(moId);
+        } else {
+          console.log('MO is in DRAFT state, not loading work orders');
+          // Clear any existing work orders
+          setWorkOrders([]);
         }
         
       } catch (error) {
@@ -622,6 +794,15 @@ export const ManufacturingOrderForm: React.FC = () => {
                 </div>
               ) : (
                 <div className="flex gap-3">
+                  {formData.state === 'Draft' && isEditMode && (
+                    <button 
+                      onClick={handleConfirm}
+                      disabled={saving}
+                      className="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {saving ? 'Confirming...' : 'Confirm MO & Create Work Orders'}
+                    </button>
+                  )}
                   {formData.state === 'In-Progress' && (
                     <button 
                       onClick={handleCompleteMO}
@@ -976,9 +1157,16 @@ export const ManufacturingOrderForm: React.FC = () => {
                       </div>
                     ) : (
                       <div className="border border-gray-300 rounded p-4 bg-gray-50">
-                        <p className="text-gray-600 text-sm">Work orders will be generated based on the selected Bill of Materials</p>
-                        {formData.billOfMaterials && (
-                          <p className="text-sm text-blue-600 mt-2">Select a BOM to see work order preview</p>
+                        <p className="text-gray-600 text-sm mb-2">Work orders will be generated based on the selected Bill of Materials when the MO is confirmed.</p>
+                        {formData.billOfMaterials ? (
+                          <>
+                            <p className="text-sm text-blue-600 mb-2">✓ BOM selected: Work orders are ready to be created</p>
+                            {isEditMode && (
+                              <p className="text-sm text-orange-600">Click "Confirm MO & Create Work Orders" button above to generate actual work orders</p>
+                            )}
+                          </>
+                        ) : (
+                          <p className="text-sm text-gray-500">Select a BOM first to enable work order creation</p>
                         )}
                       </div>
                     )

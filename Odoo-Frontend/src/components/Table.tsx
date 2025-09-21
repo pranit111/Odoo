@@ -86,13 +86,20 @@ export const Table: React.FC<TableProps> = ({
     
     if (column.key === 'status') {
       const statusColors = {
+        // Existing status colors
         'Done': 'bg-green-100 text-green-800',
         'In-Progress': 'bg-blue-100 text-blue-800',
         'To Do': 'bg-gray-100 text-gray-800',
         'To Close': 'bg-orange-100 text-orange-800',
         'Draft': 'bg-gray-100 text-gray-800',
         'Confirmed': 'bg-purple-100 text-purple-800',
-        'Cancelled': 'bg-red-100 text-red-800'
+        'Cancelled': 'bg-red-100 text-red-800',
+        
+        // Work Order status colors
+        'PENDING': 'bg-yellow-100 text-yellow-800',
+        'IN_PROGRESS': 'bg-blue-100 text-blue-800',
+        'COMPLETED': 'bg-green-100 text-green-800',
+        'CANCELED': 'bg-red-100 text-red-800'
       };
       return (
         <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusColors[value as keyof typeof statusColors] || 'bg-gray-100 text-gray-800'}`}>
@@ -101,12 +108,19 @@ export const Table: React.FC<TableProps> = ({
       );
     }
     
-    if (column.key === 'expectedDuration' || column.key === 'realDuration') {
+    if (column.key === 'expectedDuration' || column.key === 'realDuration' || 
+        column.key === 'estimated_duration_minutes' || column.key === 'actual_duration_minutes') {
       return value ? `${value} min` : '-';
     }
     
-    if (column.key === 'dueDate' || column.key === 'scheduleDate') {
-      return new Date(value).toLocaleDateString();
+    if (column.key === 'efficiency_percentage') {
+      return value ? `${value.toFixed(1)}%` : '0%';
+    }
+    
+    if (column.key === 'dueDate' || column.key === 'scheduleDate' || 
+        column.key === 'scheduled_start_date' || column.key === 'actual_start_date' || 
+        column.key === 'completion_date') {
+      return value ? new Date(value).toLocaleDateString() : '-';
     }
     
     return value;

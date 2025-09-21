@@ -90,25 +90,32 @@ class ManufacturingOrder(models.Model):
         return f'MO{date_str}{new_num:04d}'
     
     def get_required_components(self):
-        """Get component requirements with availability check"""
+        """Get component requirements from stored MO components"""
         components = []
-        for bom_comp in self.bom.components.all():
-            availability = bom_comp.check_availability(self.quantity_to_produce)
+        for mo_comp in self.component_requirements.all():
+            # Get current stock availability
+            current_stock = mo_comp.component.current_stock
+            shortage = max(0, mo_comp.required_quantity - current_stock)
+            
             components.append({
-                'component': bom_comp.component,
-                'bom_component': bom_comp,
-                'quantity_per_unit': bom_comp.quantity,
-                'total_required': availability['required'],
-                'available_stock': availability['available'],
-                'shortage': availability['shortage'],
-                'is_sufficient': availability['is_sufficient']
+                'component_id': mo_comp.component.product_id,
+                'component_name': mo_comp.component.name,
+                'component_sku': mo_comp.component.sku,
+                'quantity_per_unit': mo_comp.quantity_per_unit,
+                'required_quantity': mo_comp.required_quantity,
+                'available_stock': current_stock,
+                'shortage': shortage,
+                'is_sufficient': current_stock >= mo_comp.required_quantity
             })
         return components
     
     def check_component_availability(self):
         """Check if all components are available"""
-        components = self.get_required_components()
-        return all(comp['is_sufficient'] for comp in components)
+        for mo_comp in self.component_requirements.all():
+            current_stock = mo_comp.component.current_stock
+            if current_stock < mo_comp.required_quantity:
+                return False
+        return True
     
     def get_total_estimated_cost(self):
         """Calculate total estimated cost for this MO"""
@@ -141,6 +148,20 @@ class ManufacturingOrder(models.Model):
         completed = work_orders.filter(status='COMPLETED').count()
         return (completed / work_orders.count()) * 100
     
+    def populate_components_from_bom(self):
+        """Populate component requirements from BOM"""
+        # Clear existing components
+        self.component_requirements.all().delete()
+        
+        # Add components from BOM
+        for bom_comp in self.bom.components.all():
+            MOComponentRequirement.objects.create(
+                mo=self,
+                component=bom_comp.component,
+                quantity_per_unit=bom_comp.quantity,
+                required_quantity=bom_comp.quantity * self.quantity_to_produce
+            )
+    
     def can_start(self):
         """Check if MO can be started"""
         return (
@@ -148,6 +169,56 @@ class ManufacturingOrder(models.Model):
             self.check_component_availability() and
             self.work_orders.exists()
         )
+
+
+class MOComponentRequirement(models.Model):
+    """
+    Component requirement for a specific Manufacturing Order
+    """
+    requirement_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    
+    # Relationships
+    mo = models.ForeignKey(ManufacturingOrder, on_delete=models.CASCADE, related_name='component_requirements')
+    component = models.ForeignKey('products.Product', on_delete=models.CASCADE, related_name='mo_requirements')
+    
+    # Quantities
+    quantity_per_unit = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        help_text="Quantity of this component needed per unit of finished product"
+    )
+    required_quantity = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        help_text="Total quantity required for this MO"
+    )
+    consumed_quantity = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        default=0,
+        help_text="Quantity already consumed/allocated"
+    )
+    
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        unique_together = [['mo', 'component']]
+        ordering = ['component__name']
+    
+    def __str__(self):
+        return f"{self.mo.mo_number} - {self.component.name}: {self.required_quantity}"
+    
+    @property
+    def remaining_quantity(self):
+        """Quantity still needed"""
+        return self.required_quantity - self.consumed_quantity
+    
+    @property
+    def is_satisfied(self):
+        """Check if requirement is fully satisfied"""
+        return self.component.current_stock >= self.remaining_quantity
 
 
 class WorkOrder(models.Model):
@@ -193,6 +264,8 @@ class WorkOrder(models.Model):
     scheduled_start_date = models.DateTimeField(blank=True, null=True)
     actual_start_date = models.DateTimeField(blank=True, null=True)
     completion_date = models.DateTimeField(blank=True, null=True)
+    pause_start_time = models.DateTimeField(blank=True, null=True, help_text="When work was paused")
+    total_pause_minutes = models.PositiveIntegerField(default=0, help_text="Total time paused in minutes")
     
     # Notes and issues
     notes = models.TextField(blank=True, help_text="Work order notes, instructions, or issues")
@@ -224,7 +297,12 @@ class WorkOrder(models.Model):
         return f"{mo_num}-{self.sequence:02d}"
     
     def start_work(self, operator=None):
-        """Start the work order"""
+        """Start or resume the work order"""
+        if self.status == 'PAUSED':
+            # Resume paused work
+            self.resume_work()
+            return
+        
         if self.status != 'PENDING':
             raise ValidationError(f"Work order must be PENDING to start (current: {self.status})")
         
@@ -245,9 +323,34 @@ class WorkOrder(models.Model):
         if self.status != 'IN_PROGRESS':
             raise ValidationError("Can only pause work orders that are in progress")
         
+        # Calculate time worked so far and add to actual duration
+        if self.actual_start_date and not self.pause_start_time:
+            time_worked = timezone.now() - self.actual_start_date
+            self.actual_duration_minutes += int(time_worked.total_seconds() / 60)
+        
         self.status = 'PAUSED'
+        self.pause_start_time = timezone.now()
+        
         if notes:
             self.notes += f"\n[PAUSED {timezone.now()}]: {notes}"
+        self.save()
+    
+    def resume_work(self, notes=None):
+        """Resume paused work order"""
+        if self.status != 'PAUSED':
+            raise ValidationError("Can only resume paused work orders")
+        
+        # Calculate pause duration
+        if self.pause_start_time:
+            pause_duration = timezone.now() - self.pause_start_time
+            self.total_pause_minutes += int(pause_duration.total_seconds() / 60)
+        
+        self.status = 'IN_PROGRESS'
+        self.actual_start_date = timezone.now()  # Reset start time for resumed work
+        self.pause_start_time = None
+        
+        if notes:
+            self.notes += f"\n[RESUMED {timezone.now()}]: {notes}"
         self.save()
     
     def complete_work(self, notes=None, actual_duration=None):
@@ -260,21 +363,41 @@ class WorkOrder(models.Model):
         
         if actual_duration:
             self.actual_duration_minutes = actual_duration
-        elif self.actual_start_date:
-            # Calculate duration if not provided
-            duration = timezone.now() - self.actual_start_date
-            self.actual_duration_minutes = int(duration.total_seconds() / 60)
+        else:
+            # Calculate final duration
+            if self.status == 'IN_PROGRESS' and self.actual_start_date:
+                # Add current work session time
+                current_session = timezone.now() - self.actual_start_date
+                self.actual_duration_minutes += int(current_session.total_seconds() / 60)
+            elif self.status == 'PAUSED' and self.pause_start_time:
+                # Work was paused, duration already calculated during pause
+                pass
         
         if notes:
             self.notes += f"\n[COMPLETED {timezone.now()}]: {notes}"
         
+        # Clear pause tracking
+        self.pause_start_time = None
+        
         self.save()
         
         # Check if all WOs are complete to update MO status
-        if self.mo.work_orders.filter(status__in=['PENDING', 'IN_PROGRESS', 'PAUSED']).count() == 0:
+        pending_wos = self.mo.work_orders.filter(status__in=['PENDING', 'IN_PROGRESS', 'PAUSED'])
+        if pending_wos.count() == 0:
+            # All work orders completed - complete the MO
             self.mo.status = 'DONE'
             self.mo.completion_date = timezone.now()
+            self.mo.quantity_produced = self.mo.quantity_to_produce
             self.mo.save()
+            
+            # Process inventory movements
+            try:
+                from inventory.models import StockOperations
+                StockOperations.complete_manufacturing_order(self.mo)
+            except Exception as e:
+                # Log the error but don't prevent MO completion
+                import logging
+                logging.error(f"Error processing inventory for MO {self.mo.mo_number}: {e}")
     
     def get_efficiency_percentage(self):
         """Calculate efficiency based on estimated vs actual time"""
