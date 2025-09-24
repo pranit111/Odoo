@@ -51,7 +51,7 @@ export const Login: React.FC = () => {
         <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-8">
                    <img src="/ordio-logo.gif" alt="Ordio" className="h-32 mx-auto mb-4" />
 
-          <h2 className="text-2xl font-semibold text-black mb-6 text-center">Welcome Back</h2>
+          <h2 className="text-2xl font-semibold text-black mb-6 text-center">Welcome Back to ordio</h2>
           
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
